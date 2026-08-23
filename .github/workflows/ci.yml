@@ -11,7 +11,7 @@ permissions:
 jobs:
   fmt:
     name: fmt
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -19,13 +19,9 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
-  check:
-    name: check (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-14, windows-2022]
-    runs-on: ${{ matrix.os }}
+  macos:
+    name: macOS
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -36,3 +32,7 @@ jobs:
         run: cargo check --workspace --all-targets
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+# Windows is intentionally not part of active CI yet.
+# The codebase keeps platform boundaries ready for a future Windows implementation
+# after the macOS product path is stable.
