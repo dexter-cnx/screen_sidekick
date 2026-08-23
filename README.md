@@ -2,7 +2,15 @@
 
 **Capture. Annotate. Ship.**
 
-Screen Sidekick is a Rust + GPUI screenshot utility targeting macOS 13+ and Windows 10/11.
+Screen Sidekick is a Rust + GPUI screenshot utility.
+
+## Platform strategy
+
+**Active implementation target: macOS 13+.**
+
+The product will be implemented, tested, and stabilized on macOS first. Windows 10/11 remains a planned platform, but Windows-specific implementation and CI are deferred until the macOS product path is stable.
+
+The architecture still preserves platform boundaries so future Windows support does not require rewriting capture, history, annotation, or application-domain logic.
 
 ## Current milestone: M0
 
@@ -34,19 +42,11 @@ xcode-select --install
 cargo run -p screen-sidekick
 ```
 
-### Windows 10/11
+### Windows 10/11 — planned
 
-Requirements:
+Windows support is intentionally deferred until the macOS implementation is stable. The core/domain boundaries should remain portable, while Windows capture, native window behavior, packaging, and CI will be implemented in a later platform phase.
 
-- latest stable Rust (MSVC toolchain)
-- Visual Studio Build Tools with Desktop development with C++
-- Windows 10/11 SDK
-
-```powershell
-cargo run -p screen-sidekick
-```
-
-`xcap` is built with its WGC feature enabled. The GPUI dependency is pinned to the same Zed revision for macOS and Windows to avoid API drift.
+Do not treat the current repository as Windows-supported yet.
 
 ## Architecture
 
@@ -63,11 +63,13 @@ sidekick-app
   lifecycle + tray + hotkeys + platform composition
 ```
 
-`sidekick-core` must not depend on GPUI. Platform-specific behavior stays behind traits/modules so a future alternate frontend does not require rewriting capture/history/editing logic.
+`sidekick-core` must not depend on GPUI. Platform-specific behavior stays behind traits/modules so future Windows support or an alternate frontend does not require rewriting capture/history/editing logic.
 
 ## M0 verification
 
 Launching the binary performs one fullscreen capture, writes it to the quick-save directory, then opens a transparent floating preview with the thumbnail and image dimensions.
+
+During the macOS-first phase, required CI consists of Rust formatting, `cargo check`, and Clippy on macOS.
 
 ## Next milestone
 
@@ -75,4 +77,4 @@ M1 should move capture triggering to tray/global hotkeys and add a bounded previ
 
 ## Packaging target
 
-Homebrew/Scoop commands will be added once signed/notarized macOS and Windows release artifacts exist. Publishing install commands before those artifacts exist would be misleading.
+Homebrew installation will be added after the macOS app is signed/notarized and release artifacts are stable. Scoop and Windows packaging are deferred with the Windows implementation phase.
