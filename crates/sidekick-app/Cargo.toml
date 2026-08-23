@@ -1,0 +1,13 @@
+[package]
+name = "screen-sidekick"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+gpui.workspace = true
+gpui_platform.workspace = true
+sidekick-core = { path = "../sidekick-core" }
+sidekick-ui = { path = "../sidekick-ui" }
