@@ -5,11 +5,12 @@ use gpui::{App, AsyncApp, WindowHandle, prelude::*};
 use gpui_platform::application;
 use runtime::AppRuntime;
 use sidekick_core::{
-    Capturer, PreviewStack, PreviewVisibility, PreviewVisibilityState, XcapCapturer,
+    CaptureRegion, Capturer, PreviewStack, PreviewVisibility, PreviewVisibilityState, XcapCapturer,
 };
 use sidekick_ui::{
-    HotkeySettingsView, OverlayCard, PeekTab, WindowChooserView, overlay_window_options,
-    peek_window_options, settings_window_options, window_chooser_options,
+    AreaSelectorView, HotkeySettingsView, OverlayCard, PeekTab, WindowChooserView,
+    area_selector_window_options, overlay_window_options, peek_window_options,
+    settings_window_options, window_chooser_options,
 };
 use std::{
     path::PathBuf,
@@ -26,6 +27,7 @@ enum CaptureRequest {
     Fullscreen,
     FocusedWindow,
     Window(u32),
+    Area(CaptureRegion),
 }
 
 struct PreviewWindow {
@@ -96,6 +98,7 @@ fn main() -> anyhow::Result<()> {
         let capture_menu_id = runtime.capture_menu_id().clone();
         let capture_window_menu_id = runtime.capture_window_menu_id().clone();
         let choose_window_menu_id = runtime.choose_window_menu_id().clone();
+        let capture_area_menu_id = runtime.capture_area_menu_id().clone();
         let settings_menu_id = runtime.settings_menu_id().clone();
         let quit_menu_id = runtime.quit_menu_id().clone();
 
@@ -107,11 +110,13 @@ fn main() -> anyhow::Result<()> {
             let mut peek_window: Option<WindowHandle<PeekTab>> = None;
             let mut settings_window: Option<WindowHandle<HotkeySettingsView>> = None;
             let mut chooser_window: Option<WindowHandle<WindowChooserView>> = None;
+            let mut area_selector_window: Option<WindowHandle<AreaSelectorView>> = None;
             let mut auto_dismiss_at: Option<Instant> = None;
             let (delete_sender, delete_receiver) = mpsc::channel();
             let (peek_sender, peek_receiver) = mpsc::channel();
             let (binding_sender, binding_receiver) = mpsc::channel();
             let (window_sender, window_receiver) = mpsc::channel();
+            let (area_sender, area_receiver) = mpsc::channel();
 
             loop {
                 let mut capture_request = None;
@@ -119,6 +124,11 @@ fn main() -> anyhow::Result<()> {
                 while let Ok(window_id) = window_receiver.try_recv() {
                     chooser_window = None;
                     capture_request = Some(CaptureRequest::Window(window_id));
+                }
+
+                while let Ok(region) = area_receiver.try_recv() {
+                    area_selector_window = None;
+                    capture_request = Some(CaptureRequest::Area(region));
                 }
 
                 while let Ok(binding) = binding_receiver.try_recv() {
@@ -215,6 +225,21 @@ fn main() -> anyhow::Result<()> {
                             }
                         }
                     }
+                    if event.id == capture_area_menu_id {
+                        if let Some(handle) = area_selector_window.take() {
+                            cx.update(|cx| {
+                                let _ = handle.update(cx, |_, window, _| window.remove_window());
+                            });
+                        }
+                        let area_sender = area_sender.clone();
+                        let handle = cx.update(|cx| {
+                            cx.open_window(area_selector_window_options(cx), move |_, cx| {
+                                cx.new(|_| AreaSelectorView::new(area_sender))
+                            })
+                            .expect("failed to open Screen Sidekick area selector")
+                        });
+                        area_selector_window = Some(handle);
+                    }
                     if event.id == settings_menu_id {
                         if let Some(handle) = settings_window.take() {
                             cx.update(|cx| {
@@ -255,6 +280,9 @@ fn main() -> anyhow::Result<()> {
                                 }
                                 CaptureRequest::Window(window_id) => {
                                     XcapCapturer.capture_window(window_id, Duration::ZERO)?
+                                }
+                                CaptureRequest::Area(region) => {
+                                    XcapCapturer.capture_region(region, Duration::ZERO)?
                                 }
                             };
                             frame.save_quick_png()
