@@ -11,9 +11,13 @@ use tray_icon::{
 
 pub struct AppRuntime {
     _tray: TrayIcon,
-    _hotkey_manager: GlobalHotKeyManager,
+    hotkey_manager: GlobalHotKeyManager,
+    capture_item: MenuItem,
     capture_menu_id: MenuId,
+    settings_menu_id: MenuId,
     quit_menu_id: MenuId,
+    fullscreen_binding: HotkeyBinding,
+    fullscreen_hotkey: HotKey,
     fullscreen_hotkey_id: u32,
 }
 
@@ -27,14 +31,16 @@ impl AppRuntime {
             .register(fullscreen_hotkey)
             .context("register fullscreen capture hotkey")?;
 
-        let capture_item = MenuItem::new("Capture Fullscreen    ⌥1", true, None);
+        let capture_item = MenuItem::new(capture_menu_text(fullscreen_binding), true, None);
+        let settings_item = MenuItem::new("Settings…", true, None);
         let separator = PredefinedMenuItem::separator();
         let quit_item = MenuItem::new("Quit Screen Sidekick", true, None);
         let capture_menu_id = capture_item.id().clone();
+        let settings_menu_id = settings_item.id().clone();
         let quit_menu_id = quit_item.id().clone();
 
         let menu = Menu::new();
-        menu.append_items(&[&capture_item, &separator, &quit_item])
+        menu.append_items(&[&capture_item, &settings_item, &separator, &quit_item])
             .context("build tray menu")?;
 
         let tray = TrayIconBuilder::new()
@@ -46,9 +52,13 @@ impl AppRuntime {
 
         Ok(Self {
             _tray: tray,
-            _hotkey_manager: hotkey_manager,
+            hotkey_manager,
+            capture_item,
             capture_menu_id,
+            settings_menu_id,
             quit_menu_id,
+            fullscreen_binding,
+            fullscreen_hotkey,
             fullscreen_hotkey_id,
         })
     }
@@ -57,13 +67,73 @@ impl AppRuntime {
         &self.capture_menu_id
     }
 
+    pub fn settings_menu_id(&self) -> &MenuId {
+        &self.settings_menu_id
+    }
+
     pub fn quit_menu_id(&self) -> &MenuId {
         &self.quit_menu_id
+    }
+
+    pub fn fullscreen_binding(&self) -> HotkeyBinding {
+        self.fullscreen_binding
     }
 
     pub fn fullscreen_hotkey_id(&self) -> u32 {
         self.fullscreen_hotkey_id
     }
+
+    pub fn set_fullscreen_binding(&mut self, binding: HotkeyBinding) -> Result<()> {
+        let next_hotkey = hotkey_from_binding(binding)?;
+        if next_hotkey.id() == self.fullscreen_hotkey_id {
+            self.fullscreen_binding = binding;
+            self.capture_item.set_text(capture_menu_text(binding));
+            return Ok(());
+        }
+
+        let previous_hotkey = self.fullscreen_hotkey;
+        self.hotkey_manager
+            .unregister(previous_hotkey)
+            .context("unregister previous fullscreen hotkey")?;
+
+        if let Err(error) = self.hotkey_manager.register(next_hotkey) {
+            let _ = self.hotkey_manager.register(previous_hotkey);
+            return Err(error).context("register replacement fullscreen hotkey");
+        }
+
+        self.fullscreen_binding = binding;
+        self.fullscreen_hotkey_id = next_hotkey.id();
+        self.fullscreen_hotkey = next_hotkey;
+        self.capture_item.set_text(capture_menu_text(binding));
+        Ok(())
+    }
+}
+
+fn capture_menu_text(binding: HotkeyBinding) -> String {
+    format!("Capture Fullscreen    {}", format_binding(binding))
+}
+
+fn format_binding(binding: HotkeyBinding) -> String {
+    let mut parts = Vec::new();
+    if binding.modifiers.control {
+        parts.push("⌃".to_owned());
+    }
+    if binding.modifiers.option {
+        parts.push("⌥".to_owned());
+    }
+    if binding.modifiers.shift {
+        parts.push("⇧".to_owned());
+    }
+    if binding.modifiers.command {
+        parts.push("⌘".to_owned());
+    }
+    parts.push(match binding.key {
+        HotkeyKey::Character(character) => character.to_ascii_uppercase().to_string(),
+        HotkeyKey::Function(number) => format!("F{number}"),
+        HotkeyKey::Space => "Space".to_owned(),
+        HotkeyKey::Enter => "Enter".to_owned(),
+    });
+    parts.join("")
 }
 
 fn hotkey_from_binding(binding: HotkeyBinding) -> Result<HotKey> {
@@ -186,7 +256,6 @@ fn sidekick_tray_icon() -> Result<Icon> {
         }
     }
 
-    // Small diagonal cut gives the otherwise simple screen glyph a distinct sidekick mark.
     for offset in 0..6 {
         let x = 7 + offset;
         let y = 6 + offset;
@@ -241,5 +310,13 @@ mod tests {
         assert!(mapped.contains(Modifiers::ALT));
         assert!(mapped.contains(Modifiers::SHIFT));
         assert!(mapped.contains(Modifiers::SUPER));
+    }
+
+    #[test]
+    fn tray_label_matches_default_binding() {
+        assert_eq!(
+            capture_menu_text(HotkeyBinding::fullscreen_default()),
+            "Capture Fullscreen    ⌥1"
+        );
     }
 }
