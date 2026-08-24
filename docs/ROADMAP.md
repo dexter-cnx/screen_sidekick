@@ -15,17 +15,20 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] bottom-right placement
 - [x] sidecar v1 model seed
 - [x] macOS compile + Clippy verification
-- [ ] rustfmt clean
+- [x] rustfmt clean
 - [ ] native macOS always-on-top/exclude-from-capture hooks
 
 ## M1 — Tray + hotkeys + preview stack (macOS)
-- tray icon and menu
-- global hotkeys: fullscreen/window/area
-- configurable key recorder model
-- preview card stack, max visible count, newest-on-top
-- auto-dismiss -> peek tab state machine
-- clipboard copy
-- delete/save actions
+- [x] tray icon and menu foundation
+- [x] Option+1 fullscreen hotkey registration
+- [ ] tray/hotkey event dispatch into GPUI controller
+- [ ] global hotkeys: window/area
+- [ ] configurable key recorder model
+- [x] bounded preview stack model, max visible count, newest-on-top
+- [ ] connect preview stack to GPUI overlay rendering
+- [ ] auto-dismiss -> peek tab state machine
+- [ ] clipboard copy
+- [ ] delete/save actions
 
 ## M2 — Capture modes + native window behavior (macOS)
 - focused/window chooser capture
