@@ -75,18 +75,16 @@ impl HotkeyBinding {
         }
     }
 
-    pub const fn conflicts_with(self, other: Self) -> bool {
-        self.modifiers.control == other.modifiers.control
-            && self.modifiers.option == other.modifiers.option
-            && self.modifiers.shift == other.modifiers.shift
-            && self.modifiers.command == other.modifiers.command
-            && hotkey_keys_equal(self.key, other.key)
+    pub fn conflicts_with(self, other: Self) -> bool {
+        self.modifiers == other.modifiers && hotkey_keys_equal(self.key, other.key)
     }
 }
 
-const fn hotkey_keys_equal(left: HotkeyKey, right: HotkeyKey) -> bool {
+fn hotkey_keys_equal(left: HotkeyKey, right: HotkeyKey) -> bool {
     match (left, right) {
-        (HotkeyKey::Character(left), HotkeyKey::Character(right)) => left == right,
+        (HotkeyKey::Character(left), HotkeyKey::Character(right)) => {
+            left.eq_ignore_ascii_case(&right)
+        }
         (HotkeyKey::Function(left), HotkeyKey::Function(right)) => left == right,
         (HotkeyKey::Space, HotkeyKey::Space) | (HotkeyKey::Enter, HotkeyKey::Enter) => true,
         _ => false,
@@ -158,5 +156,21 @@ mod tests {
         };
 
         assert!(fullscreen.conflicts_with(area));
+    }
+
+    #[test]
+    fn conflict_detection_normalizes_ascii_letter_case() {
+        let uppercase = HotkeyBinding {
+            action: HotkeyAction::CaptureWindow,
+            modifiers: HotkeyModifiers::option(),
+            key: HotkeyKey::Character('A'),
+        };
+        let lowercase = HotkeyBinding {
+            action: HotkeyAction::CaptureArea,
+            modifiers: HotkeyModifiers::option(),
+            key: HotkeyKey::Character('a'),
+        };
+
+        assert!(uppercase.conflicts_with(lowercase));
     }
 }
