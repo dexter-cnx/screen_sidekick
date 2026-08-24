@@ -7,15 +7,17 @@ use xcap::{Monitor, Window};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CaptureRegion {
-    pub x: i32,
-    pub y: i32,
-    pub width: u32,
-    pub height: u32,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
 }
 
 impl CaptureRegion {
     pub fn new(x: i32, y: i32, width: u32, height: u32) -> Result<Self, CaptureError> {
-        if x < 0 || y < 0 || width == 0 || height == 0 {
+        let x = u32::try_from(x).map_err(|_| CaptureError::InvalidRegion)?;
+        let y = u32::try_from(y).map_err(|_| CaptureError::InvalidRegion)?;
+        if width == 0 || height == 0 {
             return Err(CaptureError::InvalidRegion);
         }
 
@@ -25,6 +27,22 @@ impl CaptureRegion {
             width,
             height,
         })
+    }
+
+    pub fn x(self) -> u32 {
+        self.x
+    }
+
+    pub fn y(self) -> u32 {
+        self.y
+    }
+
+    pub fn width(self) -> u32 {
+        self.width
+    }
+
+    pub fn height(self) -> u32 {
+        self.height
     }
 }
 
@@ -62,8 +80,11 @@ pub trait Capturer: Send + Sync {
     fn capture_fullscreen(&self, delay: Duration) -> Result<CaptureFrame, CaptureError>;
     fn capture_focused_window(&self, delay: Duration) -> Result<CaptureFrame, CaptureError>;
     fn available_windows(&self) -> Result<Vec<CaptureWindow>, CaptureError>;
-    fn capture_window(&self, window_id: u32, delay: Duration)
-    -> Result<CaptureFrame, CaptureError>;
+    fn capture_window(
+        &self,
+        window_id: u32,
+        delay: Duration,
+    ) -> Result<CaptureFrame, CaptureError>;
     fn capture_region(
         &self,
         region: CaptureRegion,
@@ -171,10 +192,10 @@ impl Capturer for XcapCapturer {
     ) -> Result<CaptureFrame, CaptureError> {
         Self::wait(delay);
         let image = Self::primary_monitor()?.capture_region(
-            region.x,
-            region.y,
-            region.width,
-            region.height,
+            region.x(),
+            region.y(),
+            region.width(),
+            region.height(),
         )?;
         Ok(Self::frame_from_image(image))
     }
@@ -208,10 +229,10 @@ mod tests {
     #[test]
     fn capture_region_accepts_positive_area() {
         let region = CaptureRegion::new(10, 20, 300, 200).expect("region should be valid");
-        assert_eq!(region.x, 10);
-        assert_eq!(region.y, 20);
-        assert_eq!(region.width, 300);
-        assert_eq!(region.height, 200);
+        assert_eq!(region.x(), 10);
+        assert_eq!(region.y(), 20);
+        assert_eq!(region.width(), 300);
+        assert_eq!(region.height(), 200);
     }
 
     #[test]
