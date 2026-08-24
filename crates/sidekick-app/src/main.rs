@@ -79,7 +79,10 @@ fn main() -> anyhow::Result<()> {
                     match capture_result {
                         Ok(saved) => {
                             let evicted_path = if preview_stack.len() == DEFAULT_PREVIEW_LIMIT {
-                                preview_stack.items().last().map(|capture| capture.path.clone())
+                                preview_stack
+                                    .items()
+                                    .last()
+                                    .map(|capture| capture.path.clone())
                             } else {
                                 None
                             };
@@ -102,9 +105,7 @@ fn main() -> anyhow::Result<()> {
                             let stack_size = preview_stack.len();
                             let stack_slot = (0..DEFAULT_PREVIEW_LIMIT)
                                 .find(|slot| {
-                                    !preview_windows
-                                        .iter()
-                                        .any(|preview| preview.slot == *slot)
+                                    !preview_windows.iter().any(|preview| preview.slot == *slot)
                                 })
                                 .expect("bounded preview stack must have a free window slot");
                             let capture = preview_stack
