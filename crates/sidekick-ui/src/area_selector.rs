@@ -1,7 +1,7 @@
 use gpui::{
-    App, Bounds, Context, CursorStyle, MouseButton, Pixels, Point, Render, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, point, prelude::*,
-    px, rgba, size,
+    App, Bounds, Context, CursorStyle, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    Pixels, Point, Render, Window, WindowBackgroundAppearance, WindowBounds, WindowKind,
+    WindowOptions, div, point, prelude::*, px, rgba, size,
 };
 use sidekick_core::CaptureRegion;
 use std::sync::mpsc::Sender;
@@ -70,14 +70,14 @@ impl Render for AreaSelectorView {
             })
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|view, event, window, cx| {
+                cx.listener(|view, event: &MouseDownEvent, window, cx| {
                     view.start = Some(event.position);
                     view.current = Some(event.position);
                     window.refresh();
                     cx.notify();
                 }),
             )
-            .on_mouse_move(cx.listener(|view, event, window, cx| {
+            .on_mouse_move(cx.listener(|view, event: &MouseMoveEvent, window, cx| {
                 if view.start.is_some() {
                     view.current = Some(event.position);
                     window.refresh();
@@ -86,7 +86,7 @@ impl Render for AreaSelectorView {
             }))
             .on_mouse_up(
                 MouseButton::Left,
-                cx.listener(|view, event, window, _cx| {
+                cx.listener(|view, event: &MouseUpEvent, window, _cx| {
                     let Some(start) = view.start.take() else {
                         return;
                     };
