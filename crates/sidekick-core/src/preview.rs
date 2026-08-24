@@ -83,6 +83,9 @@ mod tests {
             .items()
             .map(|item| item.path.clone())
             .collect::<Vec<_>>();
-        assert_eq!(names, vec![PathBuf::from("three.png"), PathBuf::from("two.png")]);
+        assert_eq!(
+            names,
+            vec![PathBuf::from("three.png"), PathBuf::from("two.png")]
+        );
     }
 }
