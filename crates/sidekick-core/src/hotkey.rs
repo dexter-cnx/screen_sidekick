@@ -115,7 +115,10 @@ mod tests {
             key: HotkeyKey::Character('A'),
         };
 
-        assert_eq!(binding.validate(), Err(HotkeyValidationError::MissingModifier));
+        assert_eq!(
+            binding.validate(),
+            Err(HotkeyValidationError::MissingModifier)
+        );
     }
 
     #[test]
