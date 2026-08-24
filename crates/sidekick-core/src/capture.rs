@@ -5,6 +5,47 @@ use std::{path::PathBuf, thread, time::Duration};
 use thiserror::Error;
 use xcap::{Monitor, Window};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CaptureRegion {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+impl CaptureRegion {
+    pub fn new(x: i32, y: i32, width: u32, height: u32) -> Result<Self, CaptureError> {
+        let x = u32::try_from(x).map_err(|_| CaptureError::InvalidRegion)?;
+        let y = u32::try_from(y).map_err(|_| CaptureError::InvalidRegion)?;
+        if width == 0 || height == 0 {
+            return Err(CaptureError::InvalidRegion);
+        }
+
+        Ok(Self {
+            x,
+            y,
+            width,
+            height,
+        })
+    }
+
+    pub fn x(self) -> u32 {
+        self.x
+    }
+
+    pub fn y(self) -> u32 {
+        self.y
+    }
+
+    pub fn width(self) -> u32 {
+        self.width
+    }
+
+    pub fn height(self) -> u32 {
+        self.height
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptureWindow {
     pub id: u32,
@@ -25,6 +66,8 @@ pub enum CaptureError {
     NoFocusedWindow,
     #[error("window {0} was not found")]
     WindowNotFound(u32),
+    #[error("capture region must have non-negative coordinates and non-zero dimensions")]
+    InvalidRegion,
     #[error("invalid RGBA buffer")]
     InvalidImage,
     #[error("image I/O error: {0}")]
@@ -39,6 +82,11 @@ pub trait Capturer: Send + Sync {
     fn available_windows(&self) -> Result<Vec<CaptureWindow>, CaptureError>;
     fn capture_window(&self, window_id: u32, delay: Duration)
     -> Result<CaptureFrame, CaptureError>;
+    fn capture_region(
+        &self,
+        region: CaptureRegion,
+        delay: Duration,
+    ) -> Result<CaptureFrame, CaptureError>;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -133,6 +181,21 @@ impl Capturer for XcapCapturer {
         let image = Self::window_by_id(window_id)?.capture_image()?;
         Ok(Self::frame_from_image(image))
     }
+
+    fn capture_region(
+        &self,
+        region: CaptureRegion,
+        delay: Duration,
+    ) -> Result<CaptureFrame, CaptureError> {
+        Self::wait(delay);
+        let image = Self::primary_monitor()?.capture_region(
+            region.x(),
+            region.y(),
+            region.width(),
+            region.height(),
+        )?;
+        Ok(Self::frame_from_image(image))
+    }
 }
 
 impl CaptureFrame {
@@ -153,5 +216,27 @@ impl CaptureFrame {
             width: self.width,
             height: self.height,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capture_region_accepts_positive_area() {
+        let region = CaptureRegion::new(10, 20, 300, 200).expect("region should be valid");
+        assert_eq!(region.x(), 10);
+        assert_eq!(region.y(), 20);
+        assert_eq!(region.width(), 300);
+        assert_eq!(region.height(), 200);
+    }
+
+    #[test]
+    fn capture_region_rejects_invalid_geometry() {
+        assert!(CaptureRegion::new(-1, 0, 10, 10).is_err());
+        assert!(CaptureRegion::new(0, -1, 10, 10).is_err());
+        assert!(CaptureRegion::new(0, 0, 0, 10).is_err());
+        assert!(CaptureRegion::new(0, 0, 10, 0).is_err());
     }
 }
