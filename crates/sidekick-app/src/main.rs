@@ -4,15 +4,32 @@ use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
 use gpui::{App, AsyncApp, WindowHandle, prelude::*};
 use gpui_platform::application;
 use runtime::AppRuntime;
-use sidekick_core::{Capturer, PreviewStack, XcapCapturer};
-use sidekick_ui::{OverlayCard, overlay_window_options};
-use std::{path::PathBuf, sync::mpsc, time::Duration};
+use sidekick_core::{
+    Capturer, PreviewStack, PreviewVisibility, PreviewVisibilityState, XcapCapturer,
+};
+use sidekick_ui::{OverlayCard, PeekTab, overlay_window_options, peek_window_options};
+use std::{
+    path::PathBuf,
+    sync::mpsc,
+    time::{Duration, Instant},
+};
 use tray_icon::menu::MenuEvent;
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const PREVIEW_AUTO_DISMISS: Duration = Duration::from_secs(5);
 
 struct PreviewWindow {
     handle: WindowHandle<OverlayCard>,
+}
+
+fn remove_preview_windows(cx: &mut AsyncApp, preview_windows: &mut Vec<PreviewWindow>) {
+    for preview in preview_windows.drain(..) {
+        cx.update(|cx| {
+            let _ = preview
+                .handle
+                .update(cx, |_, window, _| window.remove_window());
+        });
+    }
 }
 
 fn rebuild_preview_windows(
@@ -21,13 +38,7 @@ fn rebuild_preview_windows(
     preview_windows: &mut Vec<PreviewWindow>,
     delete_sender: &mpsc::Sender<PathBuf>,
 ) {
-    for preview in preview_windows.drain(..) {
-        cx.update(|cx| {
-            let _ = preview
-                .handle
-                .update(cx, |_, window, _| window.remove_window());
-        });
-    }
+    remove_preview_windows(cx, preview_windows);
 
     let stack_size = preview_stack.len();
     let captures: Vec<_> = preview_stack.items().cloned().enumerate().collect();
@@ -44,6 +55,31 @@ fn rebuild_preview_windows(
     }
 }
 
+fn remove_peek_window(cx: &mut AsyncApp, peek_window: &mut Option<WindowHandle<PeekTab>>) {
+    if let Some(handle) = peek_window.take() {
+        cx.update(|cx| {
+            let _ = handle.update(cx, |_, window, _| window.remove_window());
+        });
+    }
+}
+
+fn show_peek_window(
+    cx: &mut AsyncApp,
+    stack_size: usize,
+    activate_sender: &mpsc::Sender<()>,
+    peek_window: &mut Option<WindowHandle<PeekTab>>,
+) {
+    remove_peek_window(cx, peek_window);
+    let activate_sender = activate_sender.clone();
+    let handle = cx.update(|cx| {
+        cx.open_window(peek_window_options(cx), move |_, cx| {
+            cx.new(|_| PeekTab::new(stack_size, activate_sender))
+        })
+        .expect("failed to open Screen Sidekick peek tab")
+    });
+    *peek_window = Some(handle);
+}
+
 fn main() -> anyhow::Result<()> {
     application().run(|cx: &mut App| {
         // Both tray-icon and global-hotkey require the macOS event loop to be running
@@ -57,11 +93,29 @@ fn main() -> anyhow::Result<()> {
             // Keep runtime resources alive for the whole dispatch task lifetime.
             let _runtime = runtime;
             let mut preview_stack = PreviewStack::default();
+            let mut preview_visibility = PreviewVisibilityState::default();
             let mut preview_windows: Vec<PreviewWindow> = Vec::new();
+            let mut peek_window: Option<WindowHandle<PeekTab>> = None;
+            let mut auto_dismiss_at: Option<Instant> = None;
             let (delete_sender, delete_receiver) = mpsc::channel();
+            let (peek_sender, peek_receiver) = mpsc::channel();
 
             loop {
                 let mut capture_requested = false;
+
+                while peek_receiver.try_recv().is_ok() {
+                    preview_visibility.on_peek_activated();
+                    if preview_visibility.visibility() == PreviewVisibility::Expanded {
+                        remove_peek_window(cx, &mut peek_window);
+                        rebuild_preview_windows(
+                            cx,
+                            &preview_stack,
+                            &mut preview_windows,
+                            &delete_sender,
+                        );
+                        auto_dismiss_at = Some(Instant::now() + PREVIEW_AUTO_DISMISS);
+                    }
+                }
 
                 let mut stack_changed = false;
                 while let Ok(path) = delete_receiver.try_recv() {
@@ -75,12 +129,19 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 if stack_changed {
-                    rebuild_preview_windows(
-                        cx,
-                        &preview_stack,
-                        &mut preview_windows,
-                        &delete_sender,
-                    );
+                    if preview_stack.is_empty() {
+                        preview_visibility.on_stack_empty();
+                        auto_dismiss_at = None;
+                        remove_preview_windows(cx, &mut preview_windows);
+                        remove_peek_window(cx, &mut peek_window);
+                    } else if preview_visibility.visibility() == PreviewVisibility::Expanded {
+                        rebuild_preview_windows(
+                            cx,
+                            &preview_stack,
+                            &mut preview_windows,
+                            &delete_sender,
+                        );
+                    }
                 }
 
                 while let Ok(event) = MenuEvent::receiver().try_recv() {
@@ -111,15 +172,27 @@ fn main() -> anyhow::Result<()> {
                     match capture_result {
                         Ok(saved) => {
                             preview_stack.push(saved);
+                            preview_visibility.on_capture();
+                            remove_peek_window(cx, &mut peek_window);
                             rebuild_preview_windows(
                                 cx,
                                 &preview_stack,
                                 &mut preview_windows,
                                 &delete_sender,
                             );
+                            auto_dismiss_at = Some(Instant::now() + PREVIEW_AUTO_DISMISS);
                         }
                         Err(error) => eprintln!("Screen Sidekick capture failed: {error:#}"),
                     }
+                }
+
+                if preview_visibility.visibility() == PreviewVisibility::Expanded
+                    && auto_dismiss_at.is_some_and(|deadline| Instant::now() >= deadline)
+                {
+                    preview_visibility.on_auto_dismiss();
+                    auto_dismiss_at = None;
+                    remove_preview_windows(cx, &mut preview_windows);
+                    show_peek_window(cx, preview_stack.len(), &peek_sender, &mut peek_window);
                 }
 
                 cx.background_executor().timer(EVENT_POLL_INTERVAL).await;
