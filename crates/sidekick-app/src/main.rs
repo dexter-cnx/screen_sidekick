@@ -1,10 +1,10 @@
 mod runtime;
 
 use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
-use gpui::{App, WindowHandle, prelude::*};
+use gpui::{App, AsyncApp, WindowHandle, prelude::*};
 use gpui_platform::application;
 use runtime::AppRuntime;
-use sidekick_core::{Capturer, DEFAULT_PREVIEW_LIMIT, PreviewStack, XcapCapturer};
+use sidekick_core::{Capturer, PreviewStack, XcapCapturer};
 use sidekick_ui::{OverlayCard, overlay_window_options};
 use std::{path::PathBuf, sync::mpsc, time::Duration};
 use tray_icon::menu::MenuEvent;
@@ -12,9 +12,36 @@ use tray_icon::menu::MenuEvent;
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 struct PreviewWindow {
-    path: PathBuf,
-    slot: usize,
     handle: WindowHandle<OverlayCard>,
+}
+
+fn rebuild_preview_windows(
+    cx: &mut AsyncApp,
+    preview_stack: &PreviewStack,
+    preview_windows: &mut Vec<PreviewWindow>,
+    delete_sender: &mpsc::Sender<PathBuf>,
+) {
+    for preview in preview_windows.drain(..) {
+        cx.update(|cx| {
+            let _ = preview
+                .handle
+                .update(cx, |_, window, _| window.remove_window());
+        });
+    }
+
+    let stack_size = preview_stack.len();
+    let captures: Vec<_> = preview_stack.items().cloned().enumerate().collect();
+    for (stack_slot, capture) in captures.into_iter().rev() {
+        let delete_sender = delete_sender.clone();
+        let handle = cx.update(|cx| {
+            cx.open_window(overlay_window_options(cx, stack_slot), move |_, cx| {
+                cx.new(|_| OverlayCard::new(capture, stack_size, delete_sender))
+            })
+            .expect("failed to open Screen Sidekick overlay")
+        });
+
+        preview_windows.push(PreviewWindow { handle });
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -36,19 +63,24 @@ fn main() -> anyhow::Result<()> {
             loop {
                 let mut capture_requested = false;
 
+                let mut stack_changed = false;
                 while let Ok(path) = delete_receiver.try_recv() {
                     let index = preview_stack
                         .items()
                         .position(|capture| capture.path == path);
                     if let Some(index) = index {
                         preview_stack.remove(index);
+                        stack_changed = true;
                     }
-                    if let Some(index) = preview_windows
-                        .iter()
-                        .position(|preview| preview.path == path)
-                    {
-                        preview_windows.remove(index);
-                    }
+                }
+
+                if stack_changed {
+                    rebuild_preview_windows(
+                        cx,
+                        &preview_stack,
+                        &mut preview_windows,
+                        &delete_sender,
+                    );
                 }
 
                 while let Ok(event) = MenuEvent::receiver().try_recv() {
@@ -78,60 +110,13 @@ fn main() -> anyhow::Result<()> {
 
                     match capture_result {
                         Ok(saved) => {
-                            let evicted_path = if preview_stack.len() == DEFAULT_PREVIEW_LIMIT {
-                                preview_stack
-                                    .items()
-                                    .last()
-                                    .map(|capture| capture.path.clone())
-                            } else {
-                                None
-                            };
-
                             preview_stack.push(saved);
-
-                            if let Some(evicted_path) = evicted_path
-                                && let Some(index) = preview_windows
-                                    .iter()
-                                    .position(|preview| preview.path == evicted_path)
-                            {
-                                let evicted = preview_windows.remove(index);
-                                cx.update(|cx| {
-                                    let _ = evicted
-                                        .handle
-                                        .update(cx, |_, window, _| window.remove_window());
-                                });
-                            }
-
-                            let stack_size = preview_stack.len();
-                            let stack_slot = (0..DEFAULT_PREVIEW_LIMIT)
-                                .find(|slot| {
-                                    !preview_windows.iter().any(|preview| preview.slot == *slot)
-                                })
-                                .expect("bounded preview stack must have a free window slot");
-                            let capture = preview_stack
-                                .newest()
-                                .expect("preview stack must contain the capture just pushed")
-                                .clone();
-                            let capture_path = capture.path.clone();
-                            let delete_sender = delete_sender.clone();
-
-                            let handle = cx.update(|cx| {
-                                cx.open_window(
-                                    overlay_window_options(cx, stack_slot),
-                                    move |_, cx| {
-                                        cx.new(|_| {
-                                            OverlayCard::new(capture, stack_size, delete_sender)
-                                        })
-                                    },
-                                )
-                                .expect("failed to open Screen Sidekick overlay")
-                            });
-
-                            preview_windows.push(PreviewWindow {
-                                path: capture_path,
-                                slot: stack_slot,
-                                handle,
-                            });
+                            rebuild_preview_windows(
+                                cx,
+                                &preview_stack,
+                                &mut preview_windows,
+                                &delete_sender,
+                            );
                         }
                         Err(error) => eprintln!("Screen Sidekick capture failed: {error:#}"),
                     }
