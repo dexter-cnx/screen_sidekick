@@ -68,12 +68,15 @@ impl Render for AreaSelectorView {
                         .bg(rgba(0xffffff18)),
                 )
             })
-            .on_mouse_down(MouseButton::Left, cx.listener(|view, event, window, cx| {
-                view.start = Some(event.position);
-                view.current = Some(event.position);
-                window.refresh();
-                cx.notify();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|view, event, window, cx| {
+                    view.start = Some(event.position);
+                    view.current = Some(event.position);
+                    window.refresh();
+                    cx.notify();
+                }),
+            )
             .on_mouse_move(cx.listener(|view, event, window, cx| {
                 if view.start.is_some() {
                     view.current = Some(event.position);
@@ -81,31 +84,35 @@ impl Render for AreaSelectorView {
                     cx.notify();
                 }
             }))
-            .on_mouse_up(MouseButton::Left, cx.listener(|view, event, window, _cx| {
-                let Some(start) = view.start.take() else {
-                    return;
-                };
-                view.current = None;
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|view, event, window, _cx| {
+                    let Some(start) = view.start.take() else {
+                        return;
+                    };
+                    view.current = None;
 
-                let left = start.x.min(event.position.x).max(px(0.0));
-                let top = start.y.min(event.position.y).max(px(0.0));
-                let width = (start.x - event.position.x).abs();
-                let height = (start.y - event.position.y).abs();
+                    let left = start.x.min(event.position.x).max(px(0.0));
+                    let top = start.y.min(event.position.y).max(px(0.0));
+                    let width = (start.x - event.position.x).abs();
+                    let height = (start.y - event.position.y).abs();
+                    let scale_factor = window.scale_factor();
 
-                let region = CaptureRegion::new(
-                    f32::from(left).round() as i32,
-                    f32::from(top).round() as i32,
-                    f32::from(width).round() as u32,
-                    f32::from(height).round() as u32,
-                );
+                    let region = CaptureRegion::new(
+                        (f32::from(left) * scale_factor).round() as i32,
+                        (f32::from(top) * scale_factor).round() as i32,
+                        (f32::from(width) * scale_factor).round() as u32,
+                        (f32::from(height) * scale_factor).round() as u32,
+                    );
 
-                if let Ok(region) = region {
-                    let _ = view.selection_sender.send(region);
-                    window.remove_window();
-                } else {
-                    window.refresh();
-                }
-            }))
+                    if let Ok(region) = region {
+                        let _ = view.selection_sender.send(region);
+                        window.remove_window();
+                    } else {
+                        window.refresh();
+                    }
+                }),
+            )
     }
 }
 
