@@ -74,9 +74,14 @@ fn main() -> anyhow::Result<()> {
                             let delete_sender = delete_sender.clone();
 
                             cx.update(|cx| {
-                                cx.open_window(overlay_window_options(cx), move |_, cx| {
-                                    cx.new(|_| OverlayCard::new(capture, stack_size, delete_sender))
-                                })
+                                cx.open_window(
+                                    overlay_window_options(cx, stack_size),
+                                    move |_, cx| {
+                                        cx.new(|_| {
+                                            OverlayCard::new(capture, stack_size, delete_sender)
+                                        })
+                                    },
+                                )
                                 .expect("failed to open Screen Sidekick overlay");
                             });
                         }
