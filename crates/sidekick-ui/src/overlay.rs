@@ -6,6 +6,11 @@ use gpui::{
 use sidekick_core::SavedCapture;
 use std::{path::PathBuf, sync::mpsc::Sender};
 
+const OVERLAY_WIDTH: f32 = 360.0;
+const OVERLAY_HEIGHT: f32 = 245.0;
+const OVERLAY_MARGIN: f32 = 24.0;
+const STACK_OFFSET: f32 = 28.0;
+
 pub struct OverlayCard {
     capture: SavedCapture,
     stack_size: usize,
@@ -153,9 +158,11 @@ impl Render for OverlayCard {
     }
 }
 
-pub fn overlay_window_options(cx: &App) -> WindowOptions {
-    let overlay_size = size(px(360.0), px(245.0));
-    let margin = px(24.0);
+pub fn overlay_window_options(cx: &App, stack_depth: usize) -> WindowOptions {
+    let overlay_size = size(px(OVERLAY_WIDTH), px(OVERLAY_HEIGHT));
+    let margin = px(OVERLAY_MARGIN);
+    let depth = stack_depth.saturating_sub(1) as f32;
+    let stack_offset = px(STACK_OFFSET * depth);
 
     let bounds = cx
         .primary_display()
@@ -164,7 +171,7 @@ pub fn overlay_window_options(cx: &App) -> WindowOptions {
             Bounds::new(
                 point(
                     screen.right() - overlay_size.width - margin,
-                    screen.bottom() - overlay_size.height - margin,
+                    screen.bottom() - overlay_size.height - margin - stack_offset,
                 ),
                 overlay_size,
             )
