@@ -73,6 +73,8 @@ pub enum CaptureError {
     NoFocusedWindow,
     #[error("window {0} was not found")]
     WindowNotFound(u32),
+    #[error("window shadow exclusion is not supported by the current capture backend")]
+    ShadowExclusionUnsupported,
     #[error("capture region must have non-negative coordinates and non-zero dimensions")]
     InvalidRegion,
     #[error("invalid RGBA buffer")]
@@ -92,11 +94,8 @@ pub trait Capturer: Send + Sync {
         shadow_policy: WindowShadowPolicy,
     ) -> Result<CaptureFrame, CaptureError>;
     fn available_windows(&self) -> Result<Vec<CaptureWindow>, CaptureError>;
-    fn capture_window(
-        &self,
-        window_id: u32,
-        delay: Duration,
-    ) -> Result<CaptureFrame, CaptureError>;
+    fn capture_window(&self, window_id: u32, delay: Duration)
+    -> Result<CaptureFrame, CaptureError>;
     fn capture_window_with_shadow(
         &self,
         window_id: u32,
@@ -167,36 +166,11 @@ impl XcapCapturer {
         window: &Window,
         shadow_policy: WindowShadowPolicy,
     ) -> Result<RgbaImage, CaptureError> {
-        let image = window.capture_image()?;
-        let expected_width = window.width()?;
-        let expected_height = window.height()?;
-        Ok(apply_window_shadow_policy(
-            image,
-            expected_width,
-            expected_height,
-            shadow_policy,
-        ))
+        match shadow_policy {
+            WindowShadowPolicy::Include => Ok(window.capture_image()?),
+            WindowShadowPolicy::Exclude => Err(CaptureError::ShadowExclusionUnsupported),
+        }
     }
-}
-
-fn apply_window_shadow_policy(
-    image: RgbaImage,
-    expected_width: u32,
-    expected_height: u32,
-    shadow_policy: WindowShadowPolicy,
-) -> RgbaImage {
-    if shadow_policy == WindowShadowPolicy::Include
-        || image.width() <= expected_width
-        || image.height() <= expected_height
-    {
-        return image;
-    }
-
-    let crop_width = expected_width.min(image.width());
-    let crop_height = expected_height.min(image.height());
-    let x = (image.width() - crop_width) / 2;
-    let y = (image.height() - crop_height) / 2;
-    image::imageops::crop_imm(&image, x, y, crop_width, crop_height).to_image()
 }
 
 impl Capturer for XcapCapturer {
@@ -297,7 +271,6 @@ impl CaptureFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::Rgba;
 
     #[test]
     fn capture_region_accepts_positive_area() {
@@ -317,16 +290,15 @@ mod tests {
     }
 
     #[test]
-    fn include_shadow_preserves_captured_dimensions() {
-        let image = RgbaImage::from_pixel(120, 90, Rgba([1, 2, 3, 255]));
-        let result = apply_window_shadow_policy(image, 100, 70, WindowShadowPolicy::Include);
-        assert_eq!(result.dimensions(), (120, 90));
+    fn window_shadow_policy_defaults_to_include() {
+        assert_eq!(WindowShadowPolicy::default(), WindowShadowPolicy::Include);
     }
 
     #[test]
-    fn exclude_shadow_crops_to_window_pixel_bounds() {
-        let image = RgbaImage::from_pixel(120, 90, Rgba([1, 2, 3, 255]));
-        let result = apply_window_shadow_policy(image, 100, 70, WindowShadowPolicy::Exclude);
-        assert_eq!(result.dimensions(), (100, 70));
+    fn shadow_exclusion_error_is_explicit() {
+        assert_eq!(
+            CaptureError::ShadowExclusionUnsupported.to_string(),
+            "window shadow exclusion is not supported by the current capture backend"
+        );
     }
 }
