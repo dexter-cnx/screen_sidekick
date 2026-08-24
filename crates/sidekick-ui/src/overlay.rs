@@ -158,11 +158,10 @@ impl Render for OverlayCard {
     }
 }
 
-pub fn overlay_window_options(cx: &App, stack_depth: usize) -> WindowOptions {
+pub fn overlay_window_options(cx: &App, stack_slot: usize) -> WindowOptions {
     let overlay_size = size(px(OVERLAY_WIDTH), px(OVERLAY_HEIGHT));
     let margin = px(OVERLAY_MARGIN);
-    let depth = stack_depth.saturating_sub(1) as f32;
-    let stack_offset = px(STACK_OFFSET * depth);
+    let stack_offset = px(STACK_OFFSET * stack_slot as f32);
 
     let bounds = cx
         .primary_display()
