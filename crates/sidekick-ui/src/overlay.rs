@@ -10,6 +10,8 @@ const OVERLAY_WIDTH: f32 = 360.0;
 const OVERLAY_HEIGHT: f32 = 245.0;
 const OVERLAY_MARGIN: f32 = 24.0;
 const STACK_OFFSET: f32 = 28.0;
+const PEEK_WIDTH: f32 = 104.0;
+const PEEK_HEIGHT: f32 = 40.0;
 
 pub struct OverlayCard {
     capture: SavedCapture,
@@ -158,6 +160,45 @@ impl Render for OverlayCard {
     }
 }
 
+pub struct PeekTab {
+    stack_size: usize,
+    activate_sender: Sender<()>,
+}
+
+impl PeekTab {
+    pub fn new(stack_size: usize, activate_sender: Sender<()>) -> Self {
+        Self {
+            stack_size,
+            activate_sender,
+        }
+    }
+}
+
+impl Render for PeekTab {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let activate_sender = self.activate_sender.clone();
+        div()
+            .id("peek-tab")
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(12.0))
+            .bg(rgb(0x17151f))
+            .border_1()
+            .border_color(rgb(0x353142))
+            .shadow_lg()
+            .text_color(rgb(0xe8e5ef))
+            .text_xs()
+            .cursor_pointer()
+            .child(format!("Screens · {}", self.stack_size))
+            .on_click(move |_, window, _cx| {
+                let _ = activate_sender.send(());
+                window.remove_window();
+            })
+    }
+}
+
 pub fn overlay_window_options(cx: &App, stack_slot: usize) -> WindowOptions {
     let overlay_size = size(px(OVERLAY_WIDTH), px(OVERLAY_HEIGHT));
     let margin = px(OVERLAY_MARGIN);
@@ -177,6 +218,30 @@ pub fn overlay_window_options(cx: &App, stack_slot: usize) -> WindowOptions {
         })
         .unwrap_or_else(|| Bounds::centered(None, overlay_size, cx));
 
+    floating_window_options(bounds)
+}
+
+pub fn peek_window_options(cx: &App) -> WindowOptions {
+    let peek_size = size(px(PEEK_WIDTH), px(PEEK_HEIGHT));
+    let margin = px(OVERLAY_MARGIN);
+    let bounds = cx
+        .primary_display()
+        .map(|display| {
+            let screen = display.bounds();
+            Bounds::new(
+                point(
+                    screen.right() - peek_size.width - margin,
+                    screen.bottom() - peek_size.height - margin,
+                ),
+                peek_size,
+            )
+        })
+        .unwrap_or_else(|| Bounds::centered(None, peek_size, cx));
+
+    floating_window_options(bounds)
+}
+
+fn floating_window_options(bounds: Bounds<gpui::Pixels>) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: None,
