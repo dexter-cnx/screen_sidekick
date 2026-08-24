@@ -27,7 +27,8 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] bounded preview stack model, max visible count, newest-on-top
 - [x] connect preview stack to GPUI overlay rendering
 - [x] preview stack reflow after capture/delete mutations
-- [ ] auto-dismiss -> peek tab state machine
+- [x] auto-dismiss -> peek visibility state machine model
+- [ ] runtime auto-dismiss timer + peek tab rendering/activation
 - [x] clipboard copy
 - [x] delete action
 - [x] quick-save status
