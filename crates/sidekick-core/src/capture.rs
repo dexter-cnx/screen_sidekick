@@ -80,11 +80,8 @@ pub trait Capturer: Send + Sync {
     fn capture_fullscreen(&self, delay: Duration) -> Result<CaptureFrame, CaptureError>;
     fn capture_focused_window(&self, delay: Duration) -> Result<CaptureFrame, CaptureError>;
     fn available_windows(&self) -> Result<Vec<CaptureWindow>, CaptureError>;
-    fn capture_window(
-        &self,
-        window_id: u32,
-        delay: Duration,
-    ) -> Result<CaptureFrame, CaptureError>;
+    fn capture_window(&self, window_id: u32, delay: Duration)
+    -> Result<CaptureFrame, CaptureError>;
     fn capture_region(
         &self,
         region: CaptureRegion,
