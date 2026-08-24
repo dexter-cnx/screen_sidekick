@@ -46,6 +46,13 @@ impl CaptureRegion {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum WindowShadowPolicy {
+    #[default]
+    Include,
+    Exclude,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptureWindow {
     pub id: u32,
@@ -78,10 +85,18 @@ pub enum CaptureError {
 
 pub trait Capturer: Send + Sync {
     fn capture_fullscreen(&self, delay: Duration) -> Result<CaptureFrame, CaptureError>;
-    fn capture_focused_window(&self, delay: Duration) -> Result<CaptureFrame, CaptureError>;
+    fn capture_focused_window(
+        &self,
+        delay: Duration,
+        shadow_policy: WindowShadowPolicy,
+    ) -> Result<CaptureFrame, CaptureError>;
     fn available_windows(&self) -> Result<Vec<CaptureWindow>, CaptureError>;
-    fn capture_window(&self, window_id: u32, delay: Duration)
-    -> Result<CaptureFrame, CaptureError>;
+    fn capture_window(
+        &self,
+        window_id: u32,
+        delay: Duration,
+        shadow_policy: WindowShadowPolicy,
+    ) -> Result<CaptureFrame, CaptureError>;
     fn capture_region(
         &self,
         region: CaptureRegion,
@@ -141,6 +156,41 @@ impl XcapCapturer {
             rgba: image.into_raw(),
         }
     }
+
+    fn capture_window_image(
+        window: &Window,
+        shadow_policy: WindowShadowPolicy,
+    ) -> Result<RgbaImage, CaptureError> {
+        let image = window.capture_image()?;
+        let expected_width = window.width()?;
+        let expected_height = window.height()?;
+        Ok(apply_window_shadow_policy(
+            image,
+            expected_width,
+            expected_height,
+            shadow_policy,
+        ))
+    }
+}
+
+fn apply_window_shadow_policy(
+    image: RgbaImage,
+    expected_width: u32,
+    expected_height: u32,
+    shadow_policy: WindowShadowPolicy,
+) -> RgbaImage {
+    if shadow_policy == WindowShadowPolicy::Include
+        || image.width() <= expected_width
+        || image.height() <= expected_height
+    {
+        return image;
+    }
+
+    let crop_width = expected_width.min(image.width());
+    let crop_height = expected_height.min(image.height());
+    let x = (image.width() - crop_width) / 2;
+    let y = (image.height() - crop_height) / 2;
+    image::imageops::crop_imm(&image, x, y, crop_width, crop_height).to_image()
 }
 
 impl Capturer for XcapCapturer {
@@ -150,9 +200,14 @@ impl Capturer for XcapCapturer {
         Ok(Self::frame_from_image(image))
     }
 
-    fn capture_focused_window(&self, delay: Duration) -> Result<CaptureFrame, CaptureError> {
+    fn capture_focused_window(
+        &self,
+        delay: Duration,
+        shadow_policy: WindowShadowPolicy,
+    ) -> Result<CaptureFrame, CaptureError> {
         Self::wait(delay);
-        let image = Self::focused_window()?.capture_image()?;
+        let window = Self::focused_window()?;
+        let image = Self::capture_window_image(&window, shadow_policy)?;
         Ok(Self::frame_from_image(image))
     }
 
@@ -176,9 +231,11 @@ impl Capturer for XcapCapturer {
         &self,
         window_id: u32,
         delay: Duration,
+        shadow_policy: WindowShadowPolicy,
     ) -> Result<CaptureFrame, CaptureError> {
         Self::wait(delay);
-        let image = Self::window_by_id(window_id)?.capture_image()?;
+        let window = Self::window_by_id(window_id)?;
+        let image = Self::capture_window_image(&window, shadow_policy)?;
         Ok(Self::frame_from_image(image))
     }
 
@@ -222,6 +279,7 @@ impl CaptureFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::Rgba;
 
     #[test]
     fn capture_region_accepts_positive_area() {
@@ -238,5 +296,19 @@ mod tests {
         assert!(CaptureRegion::new(0, -1, 10, 10).is_err());
         assert!(CaptureRegion::new(0, 0, 0, 10).is_err());
         assert!(CaptureRegion::new(0, 0, 10, 0).is_err());
+    }
+
+    #[test]
+    fn include_shadow_preserves_captured_dimensions() {
+        let image = RgbaImage::from_pixel(120, 90, Rgba([1, 2, 3, 255]));
+        let result = apply_window_shadow_policy(image, 100, 70, WindowShadowPolicy::Include);
+        assert_eq!(result.dimensions(), (120, 90));
+    }
+
+    #[test]
+    fn exclude_shadow_crops_to_window_pixel_bounds() {
+        let image = RgbaImage::from_pixel(120, 90, Rgba([1, 2, 3, 255]));
+        let result = apply_window_shadow_policy(image, 100, 70, WindowShadowPolicy::Exclude);
+        assert_eq!(result.dimensions(), (100, 70));
     }
 }
