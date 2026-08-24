@@ -21,6 +21,12 @@ use tray_icon::menu::MenuEvent;
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const PREVIEW_AUTO_DISMISS: Duration = Duration::from_secs(5);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CaptureRequest {
+    Fullscreen,
+    FocusedWindow,
+}
+
 struct PreviewWindow {
     handle: WindowHandle<OverlayCard>,
 }
@@ -87,6 +93,7 @@ fn main() -> anyhow::Result<()> {
     application().run(|cx: &mut App| {
         let runtime = AppRuntime::new().expect("failed to initialize tray/hotkey runtime");
         let capture_menu_id = runtime.capture_menu_id().clone();
+        let capture_window_menu_id = runtime.capture_window_menu_id().clone();
         let settings_menu_id = runtime.settings_menu_id().clone();
         let quit_menu_id = runtime.quit_menu_id().clone();
 
@@ -103,7 +110,7 @@ fn main() -> anyhow::Result<()> {
             let (binding_sender, binding_receiver) = mpsc::channel();
 
             loop {
-                let mut capture_requested = false;
+                let mut capture_request = None;
 
                 while let Ok(binding) = binding_receiver.try_recv() {
                     let result = match runtime.set_fullscreen_binding(binding) {
@@ -171,7 +178,10 @@ fn main() -> anyhow::Result<()> {
                         return;
                     }
                     if event.id == capture_menu_id {
-                        capture_requested = true;
+                        capture_request = Some(CaptureRequest::Fullscreen);
+                    }
+                    if event.id == capture_window_menu_id {
+                        capture_request = Some(CaptureRequest::FocusedWindow);
                     }
                     if event.id == settings_menu_id {
                         if let Some(handle) = settings_window.take() {
@@ -197,16 +207,22 @@ fn main() -> anyhow::Result<()> {
                     if event.id == runtime.fullscreen_hotkey_id()
                         && event.state == HotKeyState::Pressed
                     {
-                        capture_requested = true;
+                        capture_request = Some(CaptureRequest::Fullscreen);
                     }
                 }
 
-                if capture_requested {
+                if let Some(request) = capture_request {
                     let capture_result = cx
                         .background_spawn(async move {
-                            XcapCapturer
-                                .capture_fullscreen(Duration::ZERO)?
-                                .save_quick_png()
+                            let frame = match request {
+                                CaptureRequest::Fullscreen => {
+                                    XcapCapturer.capture_fullscreen(Duration::ZERO)?
+                                }
+                                CaptureRequest::FocusedWindow => {
+                                    XcapCapturer.capture_focused_window(Duration::ZERO)?
+                                }
+                            };
+                            frame.save_quick_png()
                         })
                         .await;
 
