@@ -21,14 +21,16 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 ## M1 — Tray + hotkeys + preview stack (macOS)
 - [x] tray icon and menu foundation
 - [x] Option+1 fullscreen hotkey registration
-- [ ] tray/hotkey event dispatch into GPUI controller
+- [x] tray/hotkey event dispatch into GPUI controller
 - [ ] global hotkeys: window/area
 - [ ] configurable key recorder model
 - [x] bounded preview stack model, max visible count, newest-on-top
-- [ ] connect preview stack to GPUI overlay rendering
+- [x] connect preview stack to GPUI overlay rendering
+- [x] preview stack reflow after capture/delete mutations
 - [ ] auto-dismiss -> peek tab state machine
-- [ ] clipboard copy
-- [ ] delete/save actions
+- [x] clipboard copy
+- [x] delete action
+- [x] quick-save status
 
 ## M2 — Capture modes + native window behavior (macOS)
 - focused/window chooser capture
