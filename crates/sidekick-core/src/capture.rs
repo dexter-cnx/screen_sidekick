@@ -1,5 +1,18 @@
 use crate::{CaptureFrame, SavedCapture};
 use chrono::Local;
+#[cfg(target_os = "macos")]
+use core_graphics::{
+    base::kCGImageAlphaPremultipliedLast,
+    color_space::CGColorSpace,
+    context::CGContext,
+    display::{CGDisplay, CGRectNull},
+    geometry::{CGPoint, CGRect, CGSize},
+    image::CGImage,
+    window::{
+        kCGWindowImageBestResolution, kCGWindowImageBoundsIgnoreFraming,
+        kCGWindowListOptionIncludingWindow,
+    },
+};
 use image::RgbaImage;
 use std::{path::PathBuf, thread, time::Duration};
 use thiserror::Error;
@@ -75,6 +88,8 @@ pub enum CaptureError {
     WindowNotFound(u32),
     #[error("window shadow exclusion is not supported by the current capture backend")]
     ShadowExclusionUnsupported,
+    #[error("native window capture failed for window {0}")]
+    NativeWindowCaptureFailed(u32),
     #[error("capture region must have non-negative coordinates and non-zero dimensions")]
     InvalidRegion,
     #[error("invalid RGBA buffer")]
@@ -168,7 +183,75 @@ impl XcapCapturer {
     ) -> Result<RgbaImage, CaptureError> {
         match shadow_policy {
             WindowShadowPolicy::Include => Ok(window.capture_image()?),
-            WindowShadowPolicy::Exclude => Err(CaptureError::ShadowExclusionUnsupported),
+            WindowShadowPolicy::Exclude => {
+                #[cfg(target_os = "macos")]
+                {
+                    capture_macos_window_without_shadow(window.id()?)
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    Err(CaptureError::ShadowExclusionUnsupported)
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn capture_macos_window_without_shadow(window_id: u32) -> Result<RgbaImage, CaptureError> {
+    let image = CGDisplay::screenshot(
+        unsafe { CGRectNull },
+        kCGWindowListOptionIncludingWindow,
+        window_id,
+        kCGWindowImageBoundsIgnoreFraming | kCGWindowImageBestResolution,
+    )
+    .ok_or(CaptureError::NativeWindowCaptureFailed(window_id))?;
+
+    cg_image_to_rgba(&image)
+}
+
+#[cfg(target_os = "macos")]
+fn cg_image_to_rgba(image: &CGImage) -> Result<RgbaImage, CaptureError> {
+    let width = image.width();
+    let height = image.height();
+    let bytes_per_row = width.checked_mul(4).ok_or(CaptureError::InvalidImage)?;
+    let color_space = CGColorSpace::create_device_rgb();
+    let mut context = CGContext::create_bitmap_context(
+        None,
+        width,
+        height,
+        8,
+        bytes_per_row,
+        &color_space,
+        kCGImageAlphaPremultipliedLast,
+    );
+
+    context.translate(0.0, height as f64);
+    context.scale(1.0, -1.0);
+    context.draw_image(
+        CGRect::new(
+            &CGPoint::new(0.0, 0.0),
+            &CGSize::new(width as f64, height as f64),
+        ),
+        image,
+    );
+
+    let mut rgba = context.data().to_vec();
+    unpremultiply_rgba(&mut rgba);
+    RgbaImage::from_raw(width as u32, height as u32, rgba).ok_or(CaptureError::InvalidImage)
+}
+
+#[cfg(target_os = "macos")]
+fn unpremultiply_rgba(rgba: &mut [u8]) {
+    for pixel in rgba.chunks_exact_mut(4) {
+        let alpha = u32::from(pixel[3]);
+        if alpha == 0 || alpha == 255 {
+            continue;
+        }
+
+        for channel in &mut pixel[..3] {
+            let value = (u32::from(*channel) * 255 + alpha / 2) / alpha;
+            *channel = value.min(255) as u8;
         }
     }
 }
@@ -300,5 +383,13 @@ mod tests {
             CaptureError::ShadowExclusionUnsupported.to_string(),
             "window shadow exclusion is not supported by the current capture backend"
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn unpremultiply_rgba_restores_straight_alpha_channels() {
+        let mut rgba = [64, 32, 16, 128, 1, 2, 3, 255, 0, 0, 0, 0];
+        unpremultiply_rgba(&mut rgba);
+        assert_eq!(rgba, [128, 64, 32, 128, 1, 2, 3, 255, 0, 0, 0, 0]);
     }
 }
