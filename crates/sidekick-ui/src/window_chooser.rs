@@ -94,7 +94,13 @@ impl Render for WindowChooserView {
                     .text_color(rgb(0xa9a3b4))
                     .child("Select a visible window to capture."),
             )
-            .child(div().flex().flex_col().gap_2().children(rows))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .child(div().flex().flex_col().gap_2().children(rows)),
+            )
     }
 }
 
