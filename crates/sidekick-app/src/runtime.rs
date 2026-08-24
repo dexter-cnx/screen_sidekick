@@ -47,7 +47,8 @@ impl AppRuntime {
         let timer_three_item = MenuItem::new("Timer: 3 seconds", true, None);
         let timer_five_item = MenuItem::new("Timer: 5 seconds", true, None);
         let settings_item = MenuItem::new("Settings…", true, None);
-        let separator = PredefinedMenuItem::separator();
+        let capture_separator = PredefinedMenuItem::separator();
+        let settings_separator = PredefinedMenuItem::separator();
         let quit_item = MenuItem::new("Quit Screen Sidekick", true, None);
         let capture_menu_id = capture_item.id().clone();
         let capture_window_menu_id = capture_window_item.id().clone();
@@ -65,11 +66,11 @@ impl AppRuntime {
             &capture_window_item,
             &choose_window_item,
             &capture_area_item,
-            &separator,
+            &capture_separator,
             &timer_zero_item,
             &timer_three_item,
             &timer_five_item,
-            &separator,
+            &settings_separator,
             &settings_item,
             &quit_item,
         ])
