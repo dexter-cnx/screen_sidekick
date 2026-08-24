@@ -1,6 +1,7 @@
 use gpui::{
-    App, Bounds, Context, Render, Window, WindowBackgroundAppearance, WindowBounds, WindowKind,
-    WindowOptions, div, img, point, prelude::*, px, rgb, size,
+    App, Bounds, ClipboardItem, Context, Image, ImageFormat, Render, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, img, point,
+    prelude::*, px, rgb, size,
 };
 use sidekick_core::SavedCapture;
 
@@ -17,6 +18,8 @@ impl OverlayCard {
 impl Render for OverlayCard {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let image_path = self.capture.path.clone();
+        let copy_path = image_path.clone();
+        let delete_path = image_path.clone();
 
         div().size_full().p_2().child(
             div()
@@ -45,20 +48,90 @@ impl Render for OverlayCard {
                         .text_color(rgb(0xe8e5ef))
                         .text_sm()
                         .child(format!("{} × {}", self.capture.width, self.capture.height))
-                        .child("Captured"),
+                        .child("Saved"),
                 )
-                .child(div().flex().gap_2().children(
-                    ["Copy", "Save", "Annotate", "Pin", "Delete"].map(|label| {
-                        div()
-                            .px_2()
-                            .py_1()
-                            .rounded(px(7.0))
-                            .bg(rgb(0x292532))
-                            .text_color(rgb(0xcfc9dc))
-                            .text_xs()
-                            .child(label)
-                    }),
-                )),
+                .child(
+                    div()
+                        .flex()
+                        .gap_2()
+                        .child(
+                            div()
+                                .id("copy-capture")
+                                .px_2()
+                                .py_1()
+                                .rounded(px(7.0))
+                                .bg(rgb(0x292532))
+                                .text_color(rgb(0xcfc9dc))
+                                .text_xs()
+                                .cursor_pointer()
+                                .child("Copy")
+                                .on_click(move |_, window, cx| match std::fs::read(&copy_path) {
+                                    Ok(bytes) => {
+                                        let image = Image::from_bytes(ImageFormat::Png, bytes);
+                                        cx.write_to_clipboard(ClipboardItem::new_image(&image));
+                                        window.refresh();
+                                    }
+                                    Err(error) => {
+                                        eprintln!("Screen Sidekick copy failed: {error}");
+                                    }
+                                }),
+                        )
+                        .child(
+                            div()
+                                .px_2()
+                                .py_1()
+                                .rounded(px(7.0))
+                                .bg(rgb(0x292532))
+                                .text_color(rgb(0x7f7989))
+                                .text_xs()
+                                .child("Saved"),
+                        )
+                        .child(
+                            div()
+                                .px_2()
+                                .py_1()
+                                .rounded(px(7.0))
+                                .bg(rgb(0x292532))
+                                .text_color(rgb(0x7f7989))
+                                .text_xs()
+                                .child("Annotate"),
+                        )
+                        .child(
+                            div()
+                                .px_2()
+                                .py_1()
+                                .rounded(px(7.0))
+                                .bg(rgb(0x292532))
+                                .text_color(rgb(0x7f7989))
+                                .text_xs()
+                                .child("Pin"),
+                        )
+                        .child(
+                            div()
+                                .id("delete-capture")
+                                .px_2()
+                                .py_1()
+                                .rounded(px(7.0))
+                                .bg(rgb(0x292532))
+                                .text_color(rgb(0xcfc9dc))
+                                .text_xs()
+                                .cursor_pointer()
+                                .child("Delete")
+                                .on_click(move |_, window, _cx| {
+                                    match std::fs::remove_file(&delete_path) {
+                                        Ok(()) => window.remove_window(),
+                                        Err(error)
+                                            if error.kind() == std::io::ErrorKind::NotFound =>
+                                        {
+                                            window.remove_window();
+                                        }
+                                        Err(error) => {
+                                            eprintln!("Screen Sidekick delete failed: {error}");
+                                        }
+                                    }
+                                }),
+                        ),
+                ),
         )
     }
 }

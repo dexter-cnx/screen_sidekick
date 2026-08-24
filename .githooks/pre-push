@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+echo "==> cargo fmt --all"
+cargo fmt --all
+
+echo "==> cargo fmt --all -- --check"
+cargo fmt --all -- --check

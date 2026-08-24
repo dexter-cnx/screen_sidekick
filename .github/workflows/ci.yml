@@ -37,6 +37,14 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+  required-gate:
+    name: Format, analyze, test, publish dry-run
+    needs: [fmt, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Required checks passed
+        run: echo "fmt and macOS checks passed"
+
 # Windows is intentionally not part of active CI yet.
 # The codebase keeps platform boundaries ready for a future Windows implementation
 # after the macOS product path is stable.
