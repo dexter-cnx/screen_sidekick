@@ -7,11 +7,15 @@ use sidekick_core::SavedCapture;
 
 pub struct OverlayCard {
     capture: SavedCapture,
+    stack_size: usize,
 }
 
 impl OverlayCard {
-    pub fn new(capture: SavedCapture) -> Self {
-        Self { capture }
+    pub fn new(capture: SavedCapture, stack_size: usize) -> Self {
+        Self {
+            capture,
+            stack_size,
+        }
     }
 }
 
@@ -20,6 +24,11 @@ impl Render for OverlayCard {
         let image_path = self.capture.path.clone();
         let copy_path = image_path.clone();
         let delete_path = image_path.clone();
+        let stack_label = if self.stack_size == 1 {
+            "Latest · 1 capture".to_owned()
+        } else {
+            format!("Latest · {} captures", self.stack_size)
+        };
 
         div().size_full().p_2().child(
             div()
@@ -48,7 +57,7 @@ impl Render for OverlayCard {
                         .text_color(rgb(0xe8e5ef))
                         .text_sm()
                         .child(format!("{} × {}", self.capture.width, self.capture.height))
-                        .child("Saved"),
+                        .child(stack_label),
                 )
                 .child(
                     div()
