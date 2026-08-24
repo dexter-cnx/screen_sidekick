@@ -46,6 +46,13 @@ impl CaptureRegion {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum WindowShadowPolicy {
+    #[default]
+    Include,
+    Exclude,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptureWindow {
     pub id: u32,
@@ -66,6 +73,8 @@ pub enum CaptureError {
     NoFocusedWindow,
     #[error("window {0} was not found")]
     WindowNotFound(u32),
+    #[error("window shadow exclusion is not supported by the current capture backend")]
+    ShadowExclusionUnsupported,
     #[error("capture region must have non-negative coordinates and non-zero dimensions")]
     InvalidRegion,
     #[error("invalid RGBA buffer")]
@@ -79,9 +88,20 @@ pub enum CaptureError {
 pub trait Capturer: Send + Sync {
     fn capture_fullscreen(&self, delay: Duration) -> Result<CaptureFrame, CaptureError>;
     fn capture_focused_window(&self, delay: Duration) -> Result<CaptureFrame, CaptureError>;
+    fn capture_focused_window_with_shadow(
+        &self,
+        delay: Duration,
+        shadow_policy: WindowShadowPolicy,
+    ) -> Result<CaptureFrame, CaptureError>;
     fn available_windows(&self) -> Result<Vec<CaptureWindow>, CaptureError>;
     fn capture_window(&self, window_id: u32, delay: Duration)
     -> Result<CaptureFrame, CaptureError>;
+    fn capture_window_with_shadow(
+        &self,
+        window_id: u32,
+        delay: Duration,
+        shadow_policy: WindowShadowPolicy,
+    ) -> Result<CaptureFrame, CaptureError>;
     fn capture_region(
         &self,
         region: CaptureRegion,
@@ -141,6 +161,16 @@ impl XcapCapturer {
             rgba: image.into_raw(),
         }
     }
+
+    fn capture_window_image(
+        window: &Window,
+        shadow_policy: WindowShadowPolicy,
+    ) -> Result<RgbaImage, CaptureError> {
+        match shadow_policy {
+            WindowShadowPolicy::Include => Ok(window.capture_image()?),
+            WindowShadowPolicy::Exclude => Err(CaptureError::ShadowExclusionUnsupported),
+        }
+    }
 }
 
 impl Capturer for XcapCapturer {
@@ -151,8 +181,17 @@ impl Capturer for XcapCapturer {
     }
 
     fn capture_focused_window(&self, delay: Duration) -> Result<CaptureFrame, CaptureError> {
+        self.capture_focused_window_with_shadow(delay, WindowShadowPolicy::Include)
+    }
+
+    fn capture_focused_window_with_shadow(
+        &self,
+        delay: Duration,
+        shadow_policy: WindowShadowPolicy,
+    ) -> Result<CaptureFrame, CaptureError> {
         Self::wait(delay);
-        let image = Self::focused_window()?.capture_image()?;
+        let window = Self::focused_window()?;
+        let image = Self::capture_window_image(&window, shadow_policy)?;
         Ok(Self::frame_from_image(image))
     }
 
@@ -177,8 +216,18 @@ impl Capturer for XcapCapturer {
         window_id: u32,
         delay: Duration,
     ) -> Result<CaptureFrame, CaptureError> {
+        self.capture_window_with_shadow(window_id, delay, WindowShadowPolicy::Include)
+    }
+
+    fn capture_window_with_shadow(
+        &self,
+        window_id: u32,
+        delay: Duration,
+        shadow_policy: WindowShadowPolicy,
+    ) -> Result<CaptureFrame, CaptureError> {
         Self::wait(delay);
-        let image = Self::window_by_id(window_id)?.capture_image()?;
+        let window = Self::window_by_id(window_id)?;
+        let image = Self::capture_window_image(&window, shadow_policy)?;
         Ok(Self::frame_from_image(image))
     }
 
@@ -238,5 +287,18 @@ mod tests {
         assert!(CaptureRegion::new(0, -1, 10, 10).is_err());
         assert!(CaptureRegion::new(0, 0, 0, 10).is_err());
         assert!(CaptureRegion::new(0, 0, 10, 0).is_err());
+    }
+
+    #[test]
+    fn window_shadow_policy_defaults_to_include() {
+        assert_eq!(WindowShadowPolicy::default(), WindowShadowPolicy::Include);
+    }
+
+    #[test]
+    fn shadow_exclusion_error_is_explicit() {
+        assert_eq!(
+            CaptureError::ShadowExclusionUnsupported.to_string(),
+            "window shadow exclusion is not supported by the current capture backend"
+        );
     }
 }

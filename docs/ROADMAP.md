@@ -41,7 +41,9 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] platform-neutral area capture contract + xcap region backend
 - [x] interactive area selector
 - [x] 0/3/5 second timer
-- [ ] include/exclude shadow policy
+- [x] include/exclude shadow policy contract
+- [ ] native/reliable shadow-exclusion backend
+- [ ] shadow policy runtime/settings wiring
 - [ ] all-spaces/floating/excluded-from-capture behavior
 - [ ] click-through only while collapsed
 
