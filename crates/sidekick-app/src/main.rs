@@ -8,8 +8,8 @@ use sidekick_core::{
     Capturer, PreviewStack, PreviewVisibility, PreviewVisibilityState, XcapCapturer,
 };
 use sidekick_ui::{
-    HotkeySettingsView, OverlayCard, PeekTab, overlay_window_options, peek_window_options,
-    settings_window_options,
+    HotkeySettingsView, OverlayCard, PeekTab, WindowChooserView, overlay_window_options,
+    peek_window_options, settings_window_options, window_chooser_options,
 };
 use std::{
     path::PathBuf,
@@ -25,6 +25,7 @@ const PREVIEW_AUTO_DISMISS: Duration = Duration::from_secs(5);
 enum CaptureRequest {
     Fullscreen,
     FocusedWindow,
+    Window(u32),
 }
 
 struct PreviewWindow {
@@ -94,6 +95,7 @@ fn main() -> anyhow::Result<()> {
         let runtime = AppRuntime::new().expect("failed to initialize tray/hotkey runtime");
         let capture_menu_id = runtime.capture_menu_id().clone();
         let capture_window_menu_id = runtime.capture_window_menu_id().clone();
+        let choose_window_menu_id = runtime.choose_window_menu_id().clone();
         let settings_menu_id = runtime.settings_menu_id().clone();
         let quit_menu_id = runtime.quit_menu_id().clone();
 
@@ -104,13 +106,20 @@ fn main() -> anyhow::Result<()> {
             let mut preview_windows: Vec<PreviewWindow> = Vec::new();
             let mut peek_window: Option<WindowHandle<PeekTab>> = None;
             let mut settings_window: Option<WindowHandle<HotkeySettingsView>> = None;
+            let mut chooser_window: Option<WindowHandle<WindowChooserView>> = None;
             let mut auto_dismiss_at: Option<Instant> = None;
             let (delete_sender, delete_receiver) = mpsc::channel();
             let (peek_sender, peek_receiver) = mpsc::channel();
             let (binding_sender, binding_receiver) = mpsc::channel();
+            let (window_sender, window_receiver) = mpsc::channel();
 
             loop {
                 let mut capture_request = None;
+
+                while let Ok(window_id) = window_receiver.try_recv() {
+                    chooser_window = None;
+                    capture_request = Some(CaptureRequest::Window(window_id));
+                }
 
                 while let Ok(binding) = binding_receiver.try_recv() {
                     let result = match runtime.set_fullscreen_binding(binding) {
@@ -183,6 +192,29 @@ fn main() -> anyhow::Result<()> {
                     if event.id == capture_window_menu_id {
                         capture_request = Some(CaptureRequest::FocusedWindow);
                     }
+                    if event.id == choose_window_menu_id {
+                        if let Some(handle) = chooser_window.take() {
+                            cx.update(|cx| {
+                                let _ = handle.update(cx, |_, window, _| window.remove_window());
+                            });
+                        }
+
+                        match XcapCapturer.available_windows() {
+                            Ok(windows) => {
+                                let window_sender = window_sender.clone();
+                                let handle = cx.update(|cx| {
+                                    cx.open_window(window_chooser_options(cx), move |_, cx| {
+                                        cx.new(|_| WindowChooserView::new(windows, window_sender))
+                                    })
+                                    .expect("failed to open Screen Sidekick window chooser")
+                                });
+                                chooser_window = Some(handle);
+                            }
+                            Err(error) => {
+                                eprintln!("Screen Sidekick window listing failed: {error:#}");
+                            }
+                        }
+                    }
                     if event.id == settings_menu_id {
                         if let Some(handle) = settings_window.take() {
                             cx.update(|cx| {
@@ -220,6 +252,9 @@ fn main() -> anyhow::Result<()> {
                                 }
                                 CaptureRequest::FocusedWindow => {
                                     XcapCapturer.capture_focused_window(Duration::ZERO)?
+                                }
+                                CaptureRequest::Window(window_id) => {
+                                    XcapCapturer.capture_window(window_id, Duration::ZERO)?
                                 }
                             };
                             frame.save_quick_png()
