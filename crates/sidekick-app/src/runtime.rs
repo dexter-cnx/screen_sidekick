@@ -14,6 +14,7 @@ pub struct AppRuntime {
     hotkey_manager: GlobalHotKeyManager,
     capture_item: MenuItem,
     capture_menu_id: MenuId,
+    capture_window_menu_id: MenuId,
     settings_menu_id: MenuId,
     quit_menu_id: MenuId,
     fullscreen_binding: HotkeyBinding,
@@ -32,16 +33,24 @@ impl AppRuntime {
             .context("register fullscreen capture hotkey")?;
 
         let capture_item = MenuItem::new(capture_menu_text(fullscreen_binding), true, None);
+        let capture_window_item = MenuItem::new("Capture Focused Window", true, None);
         let settings_item = MenuItem::new("Settings…", true, None);
         let separator = PredefinedMenuItem::separator();
         let quit_item = MenuItem::new("Quit Screen Sidekick", true, None);
         let capture_menu_id = capture_item.id().clone();
+        let capture_window_menu_id = capture_window_item.id().clone();
         let settings_menu_id = settings_item.id().clone();
         let quit_menu_id = quit_item.id().clone();
 
         let menu = Menu::new();
-        menu.append_items(&[&capture_item, &settings_item, &separator, &quit_item])
-            .context("build tray menu")?;
+        menu.append_items(&[
+            &capture_item,
+            &capture_window_item,
+            &settings_item,
+            &separator,
+            &quit_item,
+        ])
+        .context("build tray menu")?;
 
         let tray = TrayIconBuilder::new()
             .with_tooltip("Screen Sidekick")
@@ -55,6 +64,7 @@ impl AppRuntime {
             hotkey_manager,
             capture_item,
             capture_menu_id,
+            capture_window_menu_id,
             settings_menu_id,
             quit_menu_id,
             fullscreen_binding,
@@ -65,6 +75,10 @@ impl AppRuntime {
 
     pub fn capture_menu_id(&self) -> &MenuId {
         &self.capture_menu_id
+    }
+
+    pub fn capture_window_menu_id(&self) -> &MenuId {
+        &self.capture_window_menu_id
     }
 
     pub fn settings_menu_id(&self) -> &MenuId {

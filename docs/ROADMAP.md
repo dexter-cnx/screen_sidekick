@@ -36,12 +36,13 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] quick-save status
 
 ## M2 — Capture modes + native window behavior (macOS)
-- focused/window chooser capture
-- interactive area selector
-- 0/3/5 second timer
-- include/exclude shadow policy
-- all-spaces/floating/excluded-from-capture behavior
-- click-through only while collapsed
+- [x] focused-window capture via xcap
+- [ ] window chooser capture
+- [ ] interactive area selector
+- [ ] 0/3/5 second timer
+- [ ] include/exclude shadow policy
+- [ ] all-spaces/floating/excluded-from-capture behavior
+- [ ] click-through only while collapsed
 
 ## M3 — Annotation foundation
 - immutable base image
