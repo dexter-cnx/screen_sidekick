@@ -30,10 +30,10 @@ fn main() -> anyhow::Result<()> {
                 let mut capture_requested = false;
 
                 while let Ok(path) = delete_receiver.try_recv() {
-                    if let Some(index) = preview_stack
+                    let index = preview_stack
                         .items()
-                        .position(|capture| capture.path == path)
-                    {
+                        .position(|capture| capture.path == path);
+                    if let Some(index) = index {
                         preview_stack.remove(index);
                     }
                 }
