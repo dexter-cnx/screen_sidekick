@@ -32,6 +32,23 @@ impl HotkeySettingsView {
         }
     }
 
+    pub fn apply_binding_result(
+        &mut self,
+        result: Result<HotkeyBinding, String>,
+        cx: &mut Context<Self>,
+    ) {
+        match result {
+            Ok(binding) => {
+                self.binding = binding;
+                self.status = "Shortcut updated".to_owned();
+            }
+            Err(error) => {
+                self.status = format!("Shortcut unchanged: {error}");
+            }
+        }
+        cx.notify();
+    }
+
     fn record(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
         let Some(key) = hotkey_key_from_gpui(&event.keystroke.key) else {
             self.status = format!("Unsupported key: {}", event.keystroke.key);
@@ -57,9 +74,10 @@ impl HotkeySettingsView {
             return;
         }
 
-        self.binding = binding;
-        self.status = "Shortcut updated".to_owned();
-        let _ = self.binding_sender.send(binding);
+        match self.binding_sender.send(binding) {
+            Ok(()) => self.status = "Applying shortcut…".to_owned(),
+            Err(error) => self.status = format!("Shortcut unchanged: {error}"),
+        }
         cx.notify();
     }
 }
