@@ -85,13 +85,19 @@ pub enum CaptureError {
 
 pub trait Capturer: Send + Sync {
     fn capture_fullscreen(&self, delay: Duration) -> Result<CaptureFrame, CaptureError>;
-    fn capture_focused_window(
+    fn capture_focused_window(&self, delay: Duration) -> Result<CaptureFrame, CaptureError>;
+    fn capture_focused_window_with_shadow(
         &self,
         delay: Duration,
         shadow_policy: WindowShadowPolicy,
     ) -> Result<CaptureFrame, CaptureError>;
     fn available_windows(&self) -> Result<Vec<CaptureWindow>, CaptureError>;
     fn capture_window(
+        &self,
+        window_id: u32,
+        delay: Duration,
+    ) -> Result<CaptureFrame, CaptureError>;
+    fn capture_window_with_shadow(
         &self,
         window_id: u32,
         delay: Duration,
@@ -200,7 +206,11 @@ impl Capturer for XcapCapturer {
         Ok(Self::frame_from_image(image))
     }
 
-    fn capture_focused_window(
+    fn capture_focused_window(&self, delay: Duration) -> Result<CaptureFrame, CaptureError> {
+        self.capture_focused_window_with_shadow(delay, WindowShadowPolicy::Include)
+    }
+
+    fn capture_focused_window_with_shadow(
         &self,
         delay: Duration,
         shadow_policy: WindowShadowPolicy,
@@ -228,6 +238,14 @@ impl Capturer for XcapCapturer {
     }
 
     fn capture_window(
+        &self,
+        window_id: u32,
+        delay: Duration,
+    ) -> Result<CaptureFrame, CaptureError> {
+        self.capture_window_with_shadow(window_id, delay, WindowShadowPolicy::Include)
+    }
+
+    fn capture_window_with_shadow(
         &self,
         window_id: u32,
         delay: Duration,
