@@ -24,7 +24,8 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] tray/hotkey event dispatch into GPUI controller
 - [ ] global hotkeys: window/area
 - [x] configurable key recorder model
-- [ ] wire configurable hotkey model into runtime/settings UI
+- [x] wire configurable hotkey model into runtime registration
+- [ ] settings/key-recorder UI
 - [x] bounded preview stack model, max visible count, newest-on-top
 - [x] connect preview stack to GPUI overlay rendering
 - [x] preview stack reflow after capture/delete mutations
