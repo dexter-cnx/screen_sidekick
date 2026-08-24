@@ -99,6 +99,9 @@ fn main() -> anyhow::Result<()> {
         let capture_window_menu_id = runtime.capture_window_menu_id().clone();
         let choose_window_menu_id = runtime.choose_window_menu_id().clone();
         let capture_area_menu_id = runtime.capture_area_menu_id().clone();
+        let timer_zero_menu_id = runtime.timer_zero_menu_id().clone();
+        let timer_three_menu_id = runtime.timer_three_menu_id().clone();
+        let timer_five_menu_id = runtime.timer_five_menu_id().clone();
         let settings_menu_id = runtime.settings_menu_id().clone();
         let quit_menu_id = runtime.quit_menu_id().clone();
 
@@ -196,6 +199,15 @@ fn main() -> anyhow::Result<()> {
                         cx.update(|cx| cx.quit());
                         return;
                     }
+                    if event.id == timer_zero_menu_id {
+                        runtime.set_capture_delay(Duration::ZERO);
+                    }
+                    if event.id == timer_three_menu_id {
+                        runtime.set_capture_delay(Duration::from_secs(3));
+                    }
+                    if event.id == timer_five_menu_id {
+                        runtime.set_capture_delay(Duration::from_secs(5));
+                    }
                     if event.id == capture_menu_id {
                         capture_request = Some(CaptureRequest::Fullscreen);
                     }
@@ -269,20 +281,25 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 if let Some(request) = capture_request {
+                    let delay = runtime.capture_delay();
+                    remove_preview_windows(cx, &mut preview_windows);
+                    remove_peek_window(cx, &mut peek_window);
+                    auto_dismiss_at = None;
+
                     let capture_result = cx
                         .background_spawn(async move {
                             let frame = match request {
                                 CaptureRequest::Fullscreen => {
-                                    XcapCapturer.capture_fullscreen(Duration::ZERO)?
+                                    XcapCapturer.capture_fullscreen(delay)?
                                 }
                                 CaptureRequest::FocusedWindow => {
-                                    XcapCapturer.capture_focused_window(Duration::ZERO)?
+                                    XcapCapturer.capture_focused_window(delay)?
                                 }
                                 CaptureRequest::Window(window_id) => {
-                                    XcapCapturer.capture_window(window_id, Duration::ZERO)?
+                                    XcapCapturer.capture_window(window_id, delay)?
                                 }
                                 CaptureRequest::Area(region) => {
-                                    XcapCapturer.capture_region(region, Duration::ZERO)?
+                                    XcapCapturer.capture_region(region, delay)?
                                 }
                             };
                             frame.save_quick_png()
@@ -293,7 +310,6 @@ fn main() -> anyhow::Result<()> {
                         Ok(saved) => {
                             preview_stack.push(saved);
                             preview_visibility.on_capture();
-                            remove_peek_window(cx, &mut peek_window);
                             rebuild_preview_windows(
                                 cx,
                                 &preview_stack,
@@ -302,7 +318,20 @@ fn main() -> anyhow::Result<()> {
                             );
                             auto_dismiss_at = Some(Instant::now() + PREVIEW_AUTO_DISMISS);
                         }
-                        Err(error) => eprintln!("Screen Sidekick capture failed: {error:#}"),
+                        Err(error) => {
+                            eprintln!("Screen Sidekick capture failed: {error:#}");
+                            if !preview_stack.is_empty()
+                                && preview_visibility.visibility() == PreviewVisibility::Expanded
+                            {
+                                rebuild_preview_windows(
+                                    cx,
+                                    &preview_stack,
+                                    &mut preview_windows,
+                                    &delete_sender,
+                                );
+                                auto_dismiss_at = Some(Instant::now() + PREVIEW_AUTO_DISMISS);
+                            }
+                        }
                     }
                 }
 
