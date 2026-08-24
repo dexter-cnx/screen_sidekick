@@ -282,6 +282,10 @@ fn main() -> anyhow::Result<()> {
 
                 if let Some(request) = capture_request {
                     let delay = runtime.capture_delay();
+                    remove_preview_windows(cx, &mut preview_windows);
+                    remove_peek_window(cx, &mut peek_window);
+                    auto_dismiss_at = None;
+
                     let capture_result = cx
                         .background_spawn(async move {
                             let frame = match request {
@@ -306,7 +310,6 @@ fn main() -> anyhow::Result<()> {
                         Ok(saved) => {
                             preview_stack.push(saved);
                             preview_visibility.on_capture();
-                            remove_peek_window(cx, &mut peek_window);
                             rebuild_preview_windows(
                                 cx,
                                 &preview_stack,
@@ -315,7 +318,20 @@ fn main() -> anyhow::Result<()> {
                             );
                             auto_dismiss_at = Some(Instant::now() + PREVIEW_AUTO_DISMISS);
                         }
-                        Err(error) => eprintln!("Screen Sidekick capture failed: {error:#}"),
+                        Err(error) => {
+                            eprintln!("Screen Sidekick capture failed: {error:#}");
+                            if !preview_stack.is_empty()
+                                && preview_visibility.visibility() == PreviewVisibility::Expanded
+                            {
+                                rebuild_preview_windows(
+                                    cx,
+                                    &preview_stack,
+                                    &mut preview_windows,
+                                    &delete_sender,
+                                );
+                                auto_dismiss_at = Some(Instant::now() + PREVIEW_AUTO_DISMISS);
+                            }
+                        }
                     }
                 }
 
