@@ -98,7 +98,7 @@ impl Render for WindowChooserView {
                 div()
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
+                    .overflow_scroll()
                     .child(div().flex().flex_col().gap_2().children(rows)),
             )
     }
