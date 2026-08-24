@@ -34,12 +34,9 @@ fn rebuild_preview_windows(
     for (stack_slot, capture) in captures.into_iter().rev() {
         let delete_sender = delete_sender.clone();
         let handle = cx.update(|cx| {
-            cx.open_window(
-                overlay_window_options(cx, stack_slot),
-                move |_, cx| {
-                    cx.new(|_| OverlayCard::new(capture, stack_size, delete_sender))
-                },
-            )
+            cx.open_window(overlay_window_options(cx, stack_slot), move |_, cx| {
+                cx.new(|_| OverlayCard::new(capture, stack_size, delete_sender))
+            })
             .expect("failed to open Screen Sidekick overlay")
         });
 
