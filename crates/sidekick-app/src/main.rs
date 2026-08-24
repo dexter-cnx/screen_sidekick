@@ -30,7 +30,8 @@ fn rebuild_preview_windows(
     }
 
     let stack_size = preview_stack.len();
-    for (stack_slot, capture) in preview_stack.items().cloned().enumerate() {
+    let captures: Vec<_> = preview_stack.items().cloned().enumerate().collect();
+    for (stack_slot, capture) in captures.into_iter().rev() {
         let delete_sender = delete_sender.clone();
         let handle = cx.update(|cx| {
             cx.open_window(
