@@ -9,5 +9,7 @@ license.workspace = true
 anyhow.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
+global-hotkey.workspace = true
+tray-icon.workspace = true
 sidekick-core = { path = "../sidekick-core" }
 sidekick-ui = { path = "../sidekick-ui" }
