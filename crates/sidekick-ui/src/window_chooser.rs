@@ -74,9 +74,7 @@ impl Render for WindowChooserView {
                                     .gap_1()
                                     .min_w_0()
                                     .child(div().text_sm().text_color(rgb(0xe8e5ef)).child(title))
-                                    .child(
-                                        div().text_xs().text_color(rgb(0x9f98aa)).child(app_name),
-                                    ),
+                                    .child(div().text_xs().text_color(rgb(0x9f98aa)).child(app_name)),
                             )
                             .child(
                                 div()
