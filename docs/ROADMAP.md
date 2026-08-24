@@ -39,7 +39,7 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] focused-window capture via xcap
 - [x] window chooser capture
 - [x] platform-neutral area capture contract + xcap region backend
-- [ ] interactive area selector
+- [x] interactive area selector
 - [ ] 0/3/5 second timer
 - [ ] include/exclude shadow policy
 - [ ] all-spaces/floating/excluded-from-capture behavior
