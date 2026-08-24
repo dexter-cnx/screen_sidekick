@@ -4,9 +4,9 @@ use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
 use gpui::{App, prelude::*};
 use gpui_platform::application;
 use runtime::AppRuntime;
-use sidekick_core::{Capturer, XcapCapturer};
+use sidekick_core::{Capturer, PreviewStack, XcapCapturer};
 use sidekick_ui::{OverlayCard, overlay_window_options};
-use std::time::Duration;
+use std::{sync::mpsc, time::Duration};
 use tray_icon::menu::MenuEvent;
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -23,9 +23,20 @@ fn main() -> anyhow::Result<()> {
         cx.spawn(async move |cx| {
             // Keep runtime resources alive for the whole dispatch task lifetime.
             let _runtime = runtime;
+            let mut preview_stack = PreviewStack::default();
+            let (delete_sender, delete_receiver) = mpsc::channel();
 
             loop {
                 let mut capture_requested = false;
+
+                while let Ok(path) = delete_receiver.try_recv() {
+                    let index = preview_stack
+                        .items()
+                        .position(|capture| capture.path == path);
+                    if let Some(index) = index {
+                        preview_stack.remove(index);
+                    }
+                }
 
                 while let Ok(event) = MenuEvent::receiver().try_recv() {
                     if event.id == quit_menu_id {
@@ -54,10 +65,17 @@ fn main() -> anyhow::Result<()> {
 
                     match capture_result {
                         Ok(saved) => {
+                            preview_stack.push(saved);
+                            let stack_size = preview_stack.len();
+                            let capture = preview_stack
+                                .newest()
+                                .expect("preview stack must contain the capture just pushed")
+                                .clone();
+                            let delete_sender = delete_sender.clone();
+
                             cx.update(|cx| {
-                                let capture = saved.clone();
                                 cx.open_window(overlay_window_options(cx), move |_, cx| {
-                                    cx.new(|_| OverlayCard::new(capture))
+                                    cx.new(|_| OverlayCard::new(capture, stack_size, delete_sender))
                                 })
                                 .expect("failed to open Screen Sidekick overlay");
                             });

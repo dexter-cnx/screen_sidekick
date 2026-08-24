@@ -4,14 +4,21 @@ use gpui::{
     prelude::*, px, rgb, size,
 };
 use sidekick_core::SavedCapture;
+use std::{path::PathBuf, sync::mpsc::Sender};
 
 pub struct OverlayCard {
     capture: SavedCapture,
+    stack_size: usize,
+    delete_sender: Sender<PathBuf>,
 }
 
 impl OverlayCard {
-    pub fn new(capture: SavedCapture) -> Self {
-        Self { capture }
+    pub fn new(capture: SavedCapture, stack_size: usize, delete_sender: Sender<PathBuf>) -> Self {
+        Self {
+            capture,
+            stack_size,
+            delete_sender,
+        }
     }
 }
 
@@ -20,6 +27,12 @@ impl Render for OverlayCard {
         let image_path = self.capture.path.clone();
         let copy_path = image_path.clone();
         let delete_path = image_path.clone();
+        let delete_sender = self.delete_sender.clone();
+        let stack_label = if self.stack_size == 1 {
+            "Latest · 1 capture".to_owned()
+        } else {
+            format!("Latest · {} captures", self.stack_size)
+        };
 
         div().size_full().p_2().child(
             div()
@@ -48,7 +61,7 @@ impl Render for OverlayCard {
                         .text_color(rgb(0xe8e5ef))
                         .text_sm()
                         .child(format!("{} × {}", self.capture.width, self.capture.height))
-                        .child("Saved"),
+                        .child(stack_label),
                 )
                 .child(
                     div()
@@ -119,10 +132,14 @@ impl Render for OverlayCard {
                                 .child("Delete")
                                 .on_click(move |_, window, _cx| {
                                     match std::fs::remove_file(&delete_path) {
-                                        Ok(()) => window.remove_window(),
+                                        Ok(()) => {
+                                            let _ = delete_sender.send(delete_path.clone());
+                                            window.remove_window();
+                                        }
                                         Err(error)
                                             if error.kind() == std::io::ErrorKind::NotFound =>
                                         {
+                                            let _ = delete_sender.send(delete_path.clone());
                                             window.remove_window();
                                         }
                                         Err(error) => {
