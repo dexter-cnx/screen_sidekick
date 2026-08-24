@@ -65,16 +65,14 @@ impl Render for OverlayCard {
                                 .text_xs()
                                 .cursor_pointer()
                                 .child("Copy")
-                                .on_click(move |_, window, cx| {
-                                    match std::fs::read(&copy_path) {
-                                        Ok(bytes) => {
-                                            let image = Image::from_bytes(ImageFormat::Png, bytes);
-                                            cx.write_to_clipboard(ClipboardItem::new_image(&image));
-                                            window.refresh();
-                                        }
-                                        Err(error) => {
-                                            eprintln!("Screen Sidekick copy failed: {error}");
-                                        }
+                                .on_click(move |_, window, cx| match std::fs::read(&copy_path) {
+                                    Ok(bytes) => {
+                                        let image = Image::from_bytes(ImageFormat::Png, bytes);
+                                        cx.write_to_clipboard(ClipboardItem::new_image(&image));
+                                        window.refresh();
+                                    }
+                                    Err(error) => {
+                                        eprintln!("Screen Sidekick copy failed: {error}");
                                     }
                                 }),
                         )
@@ -122,7 +120,9 @@ impl Render for OverlayCard {
                                 .on_click(move |_, window, _cx| {
                                     match std::fs::remove_file(&delete_path) {
                                         Ok(()) => window.remove_window(),
-                                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                        Err(error)
+                                            if error.kind() == std::io::ErrorKind::NotFound =>
+                                        {
                                             window.remove_window();
                                         }
                                         Err(error) => {
