@@ -121,7 +121,11 @@ impl Render for HotkeySettingsView {
 pub fn settings_window_options(cx: &App) -> WindowOptions {
     let window_size = size(px(SETTINGS_WIDTH), px(SETTINGS_HEIGHT));
     WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, window_size, cx))),
+        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+            None,
+            window_size,
+            cx,
+        ))),
         titlebar: Some(TitlebarOptions {
             title: Some("Screen Sidekick Settings".into()),
             ..Default::default()
@@ -137,7 +141,9 @@ fn hotkey_key_from_gpui(key: &str) -> Option<HotkeyKey> {
     let normalized = key.to_ascii_lowercase();
     if normalized.len() == 1 {
         let character = normalized.chars().next()?;
-        return character.is_ascii_alphanumeric().then_some(HotkeyKey::Character(character));
+        return character
+            .is_ascii_alphanumeric()
+            .then_some(HotkeyKey::Character(character));
     }
     match normalized.as_str() {
         "space" => Some(HotkeyKey::Space),
