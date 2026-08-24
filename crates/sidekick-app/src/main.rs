@@ -7,7 +7,10 @@ use runtime::AppRuntime;
 use sidekick_core::{
     Capturer, PreviewStack, PreviewVisibility, PreviewVisibilityState, XcapCapturer,
 };
-use sidekick_ui::{OverlayCard, PeekTab, overlay_window_options, peek_window_options};
+use sidekick_ui::{
+    HotkeySettingsView, OverlayCard, PeekTab, overlay_window_options, peek_window_options,
+    settings_window_options,
+};
 use std::{
     path::PathBuf,
     sync::mpsc,
@@ -82,26 +85,31 @@ fn show_peek_window(
 
 fn main() -> anyhow::Result<()> {
     application().run(|cx: &mut App| {
-        // Both tray-icon and global-hotkey require the macOS event loop to be running
-        // on the main thread, so they are intentionally initialized inside GPUI's run closure.
         let runtime = AppRuntime::new().expect("failed to initialize tray/hotkey runtime");
         let capture_menu_id = runtime.capture_menu_id().clone();
+        let settings_menu_id = runtime.settings_menu_id().clone();
         let quit_menu_id = runtime.quit_menu_id().clone();
-        let fullscreen_hotkey_id = runtime.fullscreen_hotkey_id();
 
         cx.spawn(async move |cx| {
-            // Keep runtime resources alive for the whole dispatch task lifetime.
-            let _runtime = runtime;
+            let mut runtime = runtime;
             let mut preview_stack = PreviewStack::default();
             let mut preview_visibility = PreviewVisibilityState::default();
             let mut preview_windows: Vec<PreviewWindow> = Vec::new();
             let mut peek_window: Option<WindowHandle<PeekTab>> = None;
+            let mut settings_window: Option<WindowHandle<HotkeySettingsView>> = None;
             let mut auto_dismiss_at: Option<Instant> = None;
             let (delete_sender, delete_receiver) = mpsc::channel();
             let (peek_sender, peek_receiver) = mpsc::channel();
+            let (binding_sender, binding_receiver) = mpsc::channel();
 
             loop {
                 let mut capture_requested = false;
+
+                while let Ok(binding) = binding_receiver.try_recv() {
+                    if let Err(error) = runtime.set_fullscreen_binding(binding) {
+                        eprintln!("Screen Sidekick hotkey update failed: {error:#}");
+                    }
+                }
 
                 while peek_receiver.try_recv().is_ok() {
                     preview_visibility.on_peek_activated();
@@ -152,10 +160,30 @@ fn main() -> anyhow::Result<()> {
                     if event.id == capture_menu_id {
                         capture_requested = true;
                     }
+                    if event.id == settings_menu_id {
+                        if let Some(handle) = settings_window.take() {
+                            cx.update(|cx| {
+                                let _ = handle.update(cx, |_, window, _| window.remove_window());
+                            });
+                        }
+                        let binding = runtime.fullscreen_binding();
+                        let binding_sender = binding_sender.clone();
+                        let handle = cx.update(|cx| {
+                            cx.open_window(settings_window_options(cx), move |window, cx| {
+                                cx.new(|cx| {
+                                    HotkeySettingsView::new(binding, binding_sender, window, cx)
+                                })
+                            })
+                            .expect("failed to open Screen Sidekick settings")
+                        });
+                        settings_window = Some(handle);
+                    }
                 }
 
                 while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
-                    if event.id == fullscreen_hotkey_id && event.state == HotKeyState::Pressed {
+                    if event.id == runtime.fullscreen_hotkey_id()
+                        && event.state == HotKeyState::Pressed
+                    {
                         capture_requested = true;
                     }
                 }
