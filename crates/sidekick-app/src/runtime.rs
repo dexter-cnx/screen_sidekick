@@ -4,6 +4,7 @@ use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
 };
 use sidekick_core::{HotkeyBinding, HotkeyKey, HotkeyModifiers};
+use std::time::Duration;
 use tray_icon::{
     Icon, TrayIcon, TrayIconBuilder,
     menu::{Menu, MenuId, MenuItem, PredefinedMenuItem},
@@ -17,8 +18,12 @@ pub struct AppRuntime {
     capture_window_menu_id: MenuId,
     choose_window_menu_id: MenuId,
     capture_area_menu_id: MenuId,
+    timer_zero_menu_id: MenuId,
+    timer_three_menu_id: MenuId,
+    timer_five_menu_id: MenuId,
     settings_menu_id: MenuId,
     quit_menu_id: MenuId,
+    capture_delay: Duration,
     fullscreen_binding: HotkeyBinding,
     fullscreen_hotkey: HotKey,
     fullscreen_hotkey_id: u32,
@@ -38,6 +43,9 @@ impl AppRuntime {
         let capture_window_item = MenuItem::new("Capture Focused Window", true, None);
         let choose_window_item = MenuItem::new("Choose Window…", true, None);
         let capture_area_item = MenuItem::new("Capture Area…", true, None);
+        let timer_zero_item = MenuItem::new("Timer: 0 seconds", true, None);
+        let timer_three_item = MenuItem::new("Timer: 3 seconds", true, None);
+        let timer_five_item = MenuItem::new("Timer: 5 seconds", true, None);
         let settings_item = MenuItem::new("Settings…", true, None);
         let separator = PredefinedMenuItem::separator();
         let quit_item = MenuItem::new("Quit Screen Sidekick", true, None);
@@ -45,6 +53,9 @@ impl AppRuntime {
         let capture_window_menu_id = capture_window_item.id().clone();
         let choose_window_menu_id = choose_window_item.id().clone();
         let capture_area_menu_id = capture_area_item.id().clone();
+        let timer_zero_menu_id = timer_zero_item.id().clone();
+        let timer_three_menu_id = timer_three_item.id().clone();
+        let timer_five_menu_id = timer_five_item.id().clone();
         let settings_menu_id = settings_item.id().clone();
         let quit_menu_id = quit_item.id().clone();
 
@@ -54,8 +65,12 @@ impl AppRuntime {
             &capture_window_item,
             &choose_window_item,
             &capture_area_item,
-            &settings_item,
             &separator,
+            &timer_zero_item,
+            &timer_three_item,
+            &timer_five_item,
+            &separator,
+            &settings_item,
             &quit_item,
         ])
         .context("build tray menu")?;
@@ -75,8 +90,12 @@ impl AppRuntime {
             capture_window_menu_id,
             choose_window_menu_id,
             capture_area_menu_id,
+            timer_zero_menu_id,
+            timer_three_menu_id,
+            timer_five_menu_id,
             settings_menu_id,
             quit_menu_id,
+            capture_delay: Duration::ZERO,
             fullscreen_binding,
             fullscreen_hotkey,
             fullscreen_hotkey_id,
@@ -99,12 +118,33 @@ impl AppRuntime {
         &self.capture_area_menu_id
     }
 
+    pub fn timer_zero_menu_id(&self) -> &MenuId {
+        &self.timer_zero_menu_id
+    }
+
+    pub fn timer_three_menu_id(&self) -> &MenuId {
+        &self.timer_three_menu_id
+    }
+
+    pub fn timer_five_menu_id(&self) -> &MenuId {
+        &self.timer_five_menu_id
+    }
+
     pub fn settings_menu_id(&self) -> &MenuId {
         &self.settings_menu_id
     }
 
     pub fn quit_menu_id(&self) -> &MenuId {
         &self.quit_menu_id
+    }
+
+    pub fn capture_delay(&self) -> Duration {
+        self.capture_delay
+    }
+
+    pub fn set_capture_delay(&mut self, delay: Duration) {
+        debug_assert!(matches!(delay.as_secs(), 0 | 3 | 5));
+        self.capture_delay = delay;
     }
 
     pub fn fullscreen_binding(&self) -> HotkeyBinding {
