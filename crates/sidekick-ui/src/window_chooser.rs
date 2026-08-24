@@ -1,6 +1,6 @@
 use gpui::{
-    App, Bounds, Context, Render, SharedString, TitlebarOptions, Window, WindowBounds, WindowOptions,
-    div, prelude::*, px, rgb, size,
+    App, Bounds, Context, Render, SharedString, TitlebarOptions, Window, WindowBounds,
+    WindowOptions, div, prelude::*, px, rgb, size,
 };
 use sidekick_core::CaptureWindow;
 use std::sync::mpsc::Sender;
@@ -63,18 +63,8 @@ impl Render for WindowChooserView {
                         .flex_col()
                         .gap_1()
                         .min_w_0()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(rgb(0xe8e5ef))
-                                .child(title),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(rgb(0x9f98aa))
-                                .child(app_name),
-                        ),
+                        .child(div().text_sm().text_color(rgb(0xe8e5ef)).child(title))
+                        .child(div().text_xs().text_color(rgb(0x9f98aa)).child(app_name)),
                 )
                 .child(
                     div()
