@@ -5,22 +5,18 @@ use global_hotkey::{
 };
 use tray_icon::{
     Icon, TrayIcon, TrayIconBuilder,
-    menu::{Menu, MenuId, MenuItem, PredefinedMenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
 };
 
 pub struct AppRuntime {
     _tray: TrayIcon,
     _hotkey_manager: GlobalHotKeyManager,
-    capture_menu_id: MenuId,
-    quit_menu_id: MenuId,
-    fullscreen_hotkey_id: u32,
 }
 
 impl AppRuntime {
     pub fn new() -> Result<Self> {
         let hotkey_manager = GlobalHotKeyManager::new().context("create global hotkey manager")?;
         let fullscreen_hotkey = HotKey::new(Some(Modifiers::ALT), Code::Digit1);
-        let fullscreen_hotkey_id = fullscreen_hotkey.id();
         hotkey_manager
             .register(fullscreen_hotkey)
             .context("register Option+1 fullscreen hotkey")?;
@@ -28,8 +24,6 @@ impl AppRuntime {
         let capture_item = MenuItem::new("Capture Fullscreen    ⌥1", true, None);
         let separator = PredefinedMenuItem::separator();
         let quit_item = MenuItem::new("Quit Screen Sidekick", true, None);
-        let capture_menu_id = capture_item.id().clone();
-        let quit_menu_id = quit_item.id().clone();
 
         let menu = Menu::new();
         menu.append_items(&[&capture_item, &separator, &quit_item])
@@ -45,22 +39,7 @@ impl AppRuntime {
         Ok(Self {
             _tray: tray,
             _hotkey_manager: hotkey_manager,
-            capture_menu_id,
-            quit_menu_id,
-            fullscreen_hotkey_id,
         })
-    }
-
-    pub fn capture_menu_id(&self) -> &MenuId {
-        &self.capture_menu_id
-    }
-
-    pub fn quit_menu_id(&self) -> &MenuId {
-        &self.quit_menu_id
-    }
-
-    pub fn fullscreen_hotkey_id(&self) -> u32 {
-        self.fullscreen_hotkey_id
     }
 }
 
