@@ -106,8 +106,21 @@ fn main() -> anyhow::Result<()> {
                 let mut capture_requested = false;
 
                 while let Ok(binding) = binding_receiver.try_recv() {
-                    if let Err(error) = runtime.set_fullscreen_binding(binding) {
-                        eprintln!("Screen Sidekick hotkey update failed: {error:#}");
+                    let result = match runtime.set_fullscreen_binding(binding) {
+                        Ok(()) => Ok(binding),
+                        Err(error) => {
+                            let message = format!("{error:#}");
+                            eprintln!("Screen Sidekick hotkey update failed: {message}");
+                            Err(message)
+                        }
+                    };
+
+                    if let Some(handle) = settings_window.as_ref() {
+                        cx.update(|cx| {
+                            let _ = handle.update(cx, |view, _, cx| {
+                                view.apply_binding_result(result, cx);
+                            });
+                        });
                     }
                 }
 
