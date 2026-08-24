@@ -4,7 +4,7 @@ use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
 use gpui::{App, prelude::*};
 use gpui_platform::application;
 use runtime::AppRuntime;
-use sidekick_core::{Capturer, XcapCapturer};
+use sidekick_core::{Capturer, PreviewStack, XcapCapturer};
 use sidekick_ui::{OverlayCard, overlay_window_options};
 use std::time::Duration;
 use tray_icon::menu::MenuEvent;
@@ -23,6 +23,7 @@ fn main() -> anyhow::Result<()> {
         cx.spawn(async move |cx| {
             // Keep runtime resources alive for the whole dispatch task lifetime.
             let _runtime = runtime;
+            let mut preview_stack = PreviewStack::default();
 
             loop {
                 let mut capture_requested = false;
@@ -54,10 +55,16 @@ fn main() -> anyhow::Result<()> {
 
                     match capture_result {
                         Ok(saved) => {
+                            preview_stack.push(saved);
+                            let stack_size = preview_stack.len();
+                            let capture = preview_stack
+                                .newest()
+                                .expect("preview stack must contain the capture just pushed")
+                                .clone();
+
                             cx.update(|cx| {
-                                let capture = saved.clone();
                                 cx.open_window(overlay_window_options(cx), move |_, cx| {
-                                    cx.new(|_| OverlayCard::new(capture))
+                                    cx.new(|_| OverlayCard::new(capture, stack_size))
                                 })
                                 .expect("failed to open Screen Sidekick overlay");
                             });
