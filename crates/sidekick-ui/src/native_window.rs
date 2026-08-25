@@ -24,7 +24,7 @@ fn apply_macos_overlay_window_behavior(window: &Window) {
         return;
     };
 
-    ns_window.setLevel(unsafe { NSFloatingWindowLevel });
+    ns_window.setLevel(NSFloatingWindowLevel);
 
     let mut behavior = ns_window.collectionBehavior();
     behavior.insert(NSWindowCollectionBehavior::CanJoinAllSpaces);
