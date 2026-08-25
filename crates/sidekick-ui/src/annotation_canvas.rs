@@ -83,11 +83,7 @@ impl AnnotationCanvasView {
         let image_x = canvas_x - geometry.origin_x;
         let image_y = canvas_y - geometry.origin_y;
 
-        if image_x < 0.0
-            || image_y < 0.0
-            || image_x > geometry.width
-            || image_y > geometry.height
-        {
+        if image_x < 0.0 || image_y < 0.0 || image_x > geometry.width || image_y > geometry.height {
             return None;
         }
 
