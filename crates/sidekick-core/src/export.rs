@@ -85,12 +85,7 @@ mod tests {
 
     fn sample_image() -> RgbaImage {
         RgbaImage::from_fn(8, 8, |x, y| {
-            Rgba([
-                (x * 28) as u8,
-                (y * 28) as u8,
-                ((x + y) * 14) as u8,
-                255,
-            ])
+            Rgba([(x * 28) as u8, (y * 28) as u8, ((x + y) * 14) as u8, 255])
         })
     }
 
