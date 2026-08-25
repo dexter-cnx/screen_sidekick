@@ -4,10 +4,15 @@ use gpui::{
     WindowOptions, canvas, div, img, point, prelude::*, px, rgba, size,
 };
 use sidekick_core::{
-    Annotation, AnnotationStyle, EditorDocument, MarkerStyle, Point as CorePoint, TextStyle,
+    Annotation, AnnotationStyle, EditorDocument, EffectBrushStyle, MarkerStyle, Point as CorePoint,
+    TextStyle,
 };
 
-use crate::{text_annotation::TextAnnotationDraft, text_input::TextDraftInput};
+use crate::{
+    effect_brush::{EffectBrushDraft, EffectBrushKind},
+    text_annotation::TextAnnotationDraft,
+    text_input::TextDraftInput,
+};
 
 const WINDOW_WIDTH: f32 = 1100.0;
 const WINDOW_HEIGHT: f32 = 760.0;
@@ -24,6 +29,8 @@ pub enum AnnotationTool {
     Line,
     Arrow,
     Freehand,
+    Blur,
+    Pixelate,
     NumberMarker,
     Text,
 }
@@ -43,6 +50,7 @@ pub struct AnnotationCanvasView {
     drag_start: Option<CorePoint>,
     drag_current: Option<CorePoint>,
     freehand_points: Vec<CorePoint>,
+    effect_brush_draft: Option<EffectBrushDraft>,
     text_draft: Option<TextAnnotationDraft>,
     text_input: Option<Entity<TextDraftInput>>,
 }
@@ -55,6 +63,7 @@ impl AnnotationCanvasView {
             drag_start: None,
             drag_current: None,
             freehand_points: Vec::new(),
+            effect_brush_draft: None,
             text_draft: None,
             text_input: None,
         }
@@ -79,6 +88,7 @@ impl AnnotationCanvasView {
         self.drag_start = None;
         self.drag_current = None;
         self.freehand_points.clear();
+        self.effect_brush_draft = None;
     }
 
     fn image_geometry(&self) -> ImageGeometry {
@@ -122,6 +132,8 @@ impl AnnotationCanvasView {
             AnnotationTool::Line
                 | AnnotationTool::Arrow
                 | AnnotationTool::Freehand
+                | AnnotationTool::Blur
+                | AnnotationTool::Pixelate
                 | AnnotationTool::NumberMarker
                 | AnnotationTool::Text
         ) {
@@ -164,6 +176,33 @@ impl AnnotationCanvasView {
             number,
             style: Self::marker_style(),
         });
+    }
+
+    fn start_effect_brush(&mut self, position: CorePoint) {
+        let Some(kind) = effect_brush_kind(self.active_tool) else {
+            return;
+        };
+        let mut draft = EffectBrushDraft::with_defaults(kind);
+        draft.push_point(position);
+        self.effect_brush_draft = Some(draft);
+    }
+
+    fn update_effect_brush(&mut self, position: CorePoint) -> bool {
+        self.effect_brush_draft
+            .as_mut()
+            .is_some_and(|draft| draft.push_point(position))
+    }
+
+    fn finish_effect_brush(&mut self, position: Option<CorePoint>) {
+        let Some(mut draft) = self.effect_brush_draft.take() else {
+            return;
+        };
+        if let Some(position) = position {
+            draft.push_point(position);
+        }
+        if let Some(annotation) = draft.commit() {
+            self.document.add_annotation(annotation);
+        }
     }
 
     fn start_text_draft(
@@ -261,6 +300,8 @@ impl AnnotationCanvasView {
             }
             AnnotationTool::Select
             | AnnotationTool::Freehand
+            | AnnotationTool::Blur
+            | AnnotationTool::Pixelate
             | AnnotationTool::NumberMarker
             | AnnotationTool::Text => None,
         };
@@ -303,6 +344,7 @@ impl Render for AnnotationCanvasView {
         let drag_start = self.drag_start;
         let drag_current = self.drag_current;
         let freehand_preview = self.freehand_points.clone();
+        let effect_brush_preview = self.effect_brush_draft.clone();
         let text_editor = self.text_draft.as_ref().and_then(|draft| {
             self.text_input
                 .as_ref()
@@ -364,6 +406,18 @@ impl Render for AnnotationCanvasView {
                     .child(tool_button(
                         "Freehand",
                         AnnotationTool::Freehand,
+                        self.active_tool,
+                        cx,
+                    ))
+                    .child(tool_button(
+                        "Blur",
+                        AnnotationTool::Blur,
+                        self.active_tool,
+                        cx,
+                    ))
+                    .child(tool_button(
+                        "Pixelate",
+                        AnnotationTool::Pixelate,
                         self.active_tool,
                         cx,
                     ))
@@ -455,6 +509,14 @@ impl Render for AnnotationCanvasView {
                         .top(px(0.0))
                         .size_full(),
                     )
+                    .when_some(effect_brush_preview, |canvas, draft| {
+                        canvas.child(effect_brush_layer(
+                            draft.points().to_vec(),
+                            draft.style().clone(),
+                            draft.kind(),
+                            geometry,
+                        ))
+                    })
                     .when_some(preview, |canvas, bounds| {
                         canvas.child(
                             div()
@@ -495,6 +557,9 @@ impl Render for AnnotationCanvasView {
                                     view.freehand_points.clear();
                                     view.freehand_points.push(position);
                                 }
+                                AnnotationTool::Blur | AnnotationTool::Pixelate => {
+                                    view.start_effect_brush(position);
+                                }
                                 AnnotationTool::NumberMarker => {
                                     view.add_number_marker(position);
                                 }
@@ -526,6 +591,14 @@ impl Render for AnnotationCanvasView {
                                 window.refresh();
                                 cx.notify();
                             }
+                        } else if matches!(
+                            view.active_tool,
+                            AnnotationTool::Blur | AnnotationTool::Pixelate
+                        ) {
+                            if view.update_effect_brush(position) {
+                                window.refresh();
+                                cx.notify();
+                            }
                         } else if view.drag_start.is_some() {
                             view.drag_current = Some(position);
                             window.refresh();
@@ -541,7 +614,12 @@ impl Render for AnnotationCanvasView {
                             ) {
                                 return;
                             }
-                            if view.active_tool == AnnotationTool::Freehand {
+                            if matches!(
+                                view.active_tool,
+                                AnnotationTool::Blur | AnnotationTool::Pixelate
+                            ) {
+                                view.finish_effect_brush(view.pointer_to_base(event.position));
+                            } else if view.active_tool == AnnotationTool::Freehand {
                                 if let Some(position) = view.pointer_to_base(event.position)
                                     && view
                                         .freehand_points
@@ -629,7 +707,13 @@ fn render_annotation_layer(
         Annotation::Text { x, y, text, style } => {
             Some(render_text_annotation(x, y, text, style, geometry).into_any_element())
         }
-        Annotation::BlurBrush { .. } | Annotation::PixelateBrush { .. } => None,
+        Annotation::BlurBrush { points, style } => Some(
+            effect_brush_layer(points, style, EffectBrushKind::Blur, geometry).into_any_element(),
+        ),
+        Annotation::PixelateBrush { points, style } => Some(
+            effect_brush_layer(points, style, EffectBrushKind::Pixelate, geometry)
+                .into_any_element(),
+        ),
         annotation @ (Annotation::Line { .. }
         | Annotation::Arrow { .. }
         | Annotation::Freehand { .. }) => Some(
@@ -646,6 +730,43 @@ fn render_annotation_layer(
             .into_any_element(),
         ),
     }
+}
+
+fn effect_brush_layer(
+    points: Vec<CorePoint>,
+    style: EffectBrushStyle,
+    kind: EffectBrushKind,
+    geometry: ImageGeometry,
+) -> impl IntoElement {
+    let local_geometry = ImageGeometry {
+        origin_x: 0.0,
+        origin_y: 0.0,
+        ..geometry
+    };
+
+    div()
+        .absolute()
+        .left(px(geometry.origin_x))
+        .top(px(geometry.origin_y))
+        .w(px(geometry.width))
+        .h(px(geometry.height))
+        .overflow_hidden()
+        .child(
+            canvas(
+                move |_, _, _| {},
+                move |bounds, _, window, _| {
+                    paint_effect_brush(
+                        window,
+                        &points,
+                        &style,
+                        kind,
+                        local_geometry,
+                        bounds.origin,
+                    );
+                },
+            )
+            .size_full(),
+        )
 }
 
 fn styled_shape(
@@ -763,6 +884,14 @@ fn next_marker_number(annotations: &[Annotation]) -> u32 {
         .saturating_add(1)
 }
 
+fn effect_brush_kind(tool: AnnotationTool) -> Option<EffectBrushKind> {
+    match tool {
+        AnnotationTool::Blur => Some(EffectBrushKind::Blur),
+        AnnotationTool::Pixelate => Some(EffectBrushKind::Pixelate),
+        _ => None,
+    }
+}
+
 fn paint_path_annotation(
     window: &mut Window,
     annotation: Annotation,
@@ -781,6 +910,42 @@ fn paint_path_annotation(
             paint_polyline(window, &points, &style, geometry, canvas_origin);
         }
         _ => {}
+    }
+}
+
+fn paint_effect_brush(
+    window: &mut Window,
+    points: &[CorePoint],
+    style: &EffectBrushStyle,
+    kind: EffectBrushKind,
+    geometry: ImageGeometry,
+    canvas_origin: Point<Pixels>,
+) {
+    if points.is_empty() {
+        return;
+    }
+
+    let line_width = px((style.radius * 2.0 * geometry.scale).max(2.0));
+    let mut builder = PathBuilder::stroke(line_width);
+    for (index, point_value) in points.iter().copied().enumerate() {
+        let point_value = to_window_point(point_value, geometry, canvas_origin);
+        if index == 0 {
+            builder.move_to(point_value);
+        } else {
+            builder.line_to(point_value);
+        }
+    }
+    if points.len() == 1 {
+        let point_value = to_window_point(points[0], geometry, canvas_origin);
+        builder.line_to(point(point_value.x + px(0.01), point_value.y));
+    }
+
+    if let Ok(path) = builder.build() {
+        let color = match kind {
+            EffectBrushKind::Blur => rgba(0x5aa9e680),
+            EffectBrushKind::Pixelate => rgba(0xf6bd6080),
+        };
+        window.paint_path(path, color);
     }
 }
 
@@ -929,5 +1094,18 @@ mod tests {
 
         assert_eq!(next_marker_number(&annotations), 8);
         assert_eq!(next_marker_number(&[]), 1);
+    }
+
+    #[test]
+    fn effect_tools_map_to_effect_brush_kinds() {
+        assert_eq!(
+            effect_brush_kind(AnnotationTool::Blur),
+            Some(EffectBrushKind::Blur)
+        );
+        assert_eq!(
+            effect_brush_kind(AnnotationTool::Pixelate),
+            Some(EffectBrushKind::Pixelate)
+        );
+        assert_eq!(effect_brush_kind(AnnotationTool::Freehand), None);
     }
 }
