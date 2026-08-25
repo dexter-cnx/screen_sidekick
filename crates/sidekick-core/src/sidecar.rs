@@ -144,7 +144,10 @@ mod tests {
 
         assert_eq!(document.v, 1);
         assert_eq!(document.annotations.len(), 1);
-        assert!(matches!(document.annotations[0], Annotation::Rectangle { .. }));
+        assert!(matches!(
+            document.annotations[0],
+            Annotation::Rectangle { .. }
+        ));
     }
 
     #[test]
