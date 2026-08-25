@@ -127,7 +127,12 @@ impl Render for AnnotationCanvasView {
                     .gap_2()
                     .px_3()
                     .bg(rgba(0x242428ff))
-                    .child(tool_button("Select", AnnotationTool::Select, self.active_tool, cx))
+                    .child(tool_button(
+                        "Select",
+                        AnnotationTool::Select,
+                        self.active_tool,
+                        cx,
+                    ))
                     .child(tool_button(
                         "Rectangle",
                         AnnotationTool::Rectangle,
@@ -140,7 +145,12 @@ impl Render for AnnotationCanvasView {
                         self.active_tool,
                         cx,
                     ))
-                    .child(tool_button("Ellipse", AnnotationTool::Ellipse, self.active_tool, cx)),
+                    .child(tool_button(
+                        "Ellipse",
+                        AnnotationTool::Ellipse,
+                        self.active_tool,
+                        cx,
+                    )),
             )
             .child(
                 div()
