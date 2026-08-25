@@ -1,10 +1,10 @@
-use crate::apply_overlay_window_behavior;
+use crate::{AnnotationCanvasView, annotation_window_options, apply_overlay_window_behavior};
 use gpui::{
     App, Bounds, ClipboardItem, Context, Image, ImageFormat, Render, Window,
     WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, img, point,
     prelude::*, px, rgb, size,
 };
-use sidekick_core::SavedCapture;
+use sidekick_core::{BaseImage, EditorDocument, SavedCapture};
 use std::{path::PathBuf, sync::mpsc::Sender};
 
 const OVERLAY_WIDTH: f32 = 360.0;
@@ -36,6 +36,7 @@ impl Render for OverlayCard {
 
         let image_path = self.capture.path.clone();
         let copy_path = image_path.clone();
+        let annotate_capture = self.capture.clone();
         let delete_path = image_path.clone();
         let delete_sender = self.delete_sender.clone();
         let stack_label = if self.stack_size == 1 {
@@ -111,13 +112,36 @@ impl Render for OverlayCard {
                         )
                         .child(
                             div()
+                                .id("annotate-capture")
                                 .px_2()
                                 .py_1()
                                 .rounded(px(7.0))
                                 .bg(rgb(0x292532))
-                                .text_color(rgb(0x7f7989))
+                                .text_color(rgb(0xcfc9dc))
                                 .text_xs()
-                                .child("Annotate"),
+                                .cursor_pointer()
+                                .child("Annotate")
+                                .on_click(move |_, _window, cx| {
+                                    let capture = annotate_capture.clone();
+                                    let base_identity = format!(
+                                        "capture:{}:{}x{}",
+                                        capture.path.display(),
+                                        capture.width,
+                                        capture.height
+                                    );
+                                    let _ = cx.open_window(
+                                        annotation_window_options(cx),
+                                        move |_, cx| {
+                                            let base = BaseImage::from_saved_capture(
+                                                capture,
+                                                base_identity,
+                                            );
+                                            cx.new(|_| {
+                                                AnnotationCanvasView::new(EditorDocument::new(base))
+                                            })
+                                        },
+                                    );
+                                }),
                         )
                         .child(
                             div()
