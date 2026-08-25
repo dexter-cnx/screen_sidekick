@@ -502,17 +502,6 @@ impl Render for AnnotationCanvasView {
                                         canvas_origin,
                                     );
                                 }
-
-                                if let Some(draft) = effect_brush_preview.as_ref() {
-                                    paint_effect_brush(
-                                        window,
-                                        draft.points(),
-                                        draft.style(),
-                                        draft.kind(),
-                                        geometry,
-                                        canvas_origin,
-                                    );
-                                }
                             },
                         )
                         .absolute()
@@ -520,6 +509,14 @@ impl Render for AnnotationCanvasView {
                         .top(px(0.0))
                         .size_full(),
                     )
+                    .when_some(effect_brush_preview, |canvas, draft| {
+                        canvas.child(effect_brush_layer(
+                            draft.points().to_vec(),
+                            draft.style().clone(),
+                            draft.kind(),
+                            geometry,
+                        ))
+                    })
                     .when_some(preview, |canvas, bounds| {
                         canvas.child(
                             div()
@@ -741,16 +738,35 @@ fn effect_brush_layer(
     kind: EffectBrushKind,
     geometry: ImageGeometry,
 ) -> impl IntoElement {
-    canvas(
-        move |_, _, _| {},
-        move |bounds, _, window, _| {
-            paint_effect_brush(window, &points, &style, kind, geometry, bounds.origin);
-        },
-    )
-    .absolute()
-    .left(px(0.0))
-    .top(px(0.0))
-    .size_full()
+    let local_geometry = ImageGeometry {
+        origin_x: 0.0,
+        origin_y: 0.0,
+        ..geometry
+    };
+
+    div()
+        .absolute()
+        .left(px(geometry.origin_x))
+        .top(px(geometry.origin_y))
+        .w(px(geometry.width))
+        .h(px(geometry.height))
+        .overflow_hidden()
+        .child(
+            canvas(
+                move |_, _, _| {},
+                move |bounds, _, window, _| {
+                    paint_effect_brush(
+                        window,
+                        &points,
+                        &style,
+                        kind,
+                        local_geometry,
+                        bounds.origin,
+                    );
+                },
+            )
+            .size_full(),
+        )
 }
 
 fn styled_shape(
@@ -1082,7 +1098,10 @@ mod tests {
 
     #[test]
     fn effect_tools_map_to_effect_brush_kinds() {
-        assert_eq!(effect_brush_kind(AnnotationTool::Blur), Some(EffectBrushKind::Blur));
+        assert_eq!(
+            effect_brush_kind(AnnotationTool::Blur),
+            Some(EffectBrushKind::Blur)
+        );
         assert_eq!(
             effect_brush_kind(AnnotationTool::Pixelate),
             Some(EffectBrushKind::Pixelate)
