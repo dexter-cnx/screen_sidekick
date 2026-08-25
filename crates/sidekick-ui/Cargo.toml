@@ -8,3 +8,7 @@ license.workspace = true
 [dependencies]
 gpui.workspace = true
 sidekick-core = { path = "../sidekick-core" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = "0.3"
+raw-window-handle = "0.6"
