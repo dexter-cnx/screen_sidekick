@@ -32,6 +32,10 @@ impl TextDraftInput {
         &self.content
     }
 
+    pub fn is_composing(&self) -> bool {
+        self.marked_range.is_some()
+    }
+
     pub fn reset(&mut self, cx: &mut Context<Self>) {
         self.content = "".into();
         self.selected_range = 0..0;
