@@ -25,12 +25,15 @@ fn apply_blur_brush(image: &mut RgbaImage, points: &[Point], style: &EffectBrush
         return;
     }
 
-    let Some(mask) = BrushMask::rasterize(points, style.radius, image.width(), image.height()) else {
+    let Some(mask) = BrushMask::rasterize(points, style.radius, image.width(), image.height())
+    else {
         return;
     };
     let sigma = (style.radius * style.strength * 0.35).max(0.5);
     let kernel_padding = (sigma * 3.0).ceil() as u32;
-    let source_bounds = mask.bounds.expanded(kernel_padding, image.width(), image.height());
+    let source_bounds = mask
+        .bounds
+        .expanded(kernel_padding, image.width(), image.height());
     let source = image::imageops::crop_imm(
         image,
         source_bounds.x,
@@ -48,7 +51,8 @@ fn apply_pixelate_brush(image: &mut RgbaImage, points: &[Point], style: &EffectB
         return;
     }
 
-    let Some(mask) = BrushMask::rasterize(points, style.radius, image.width(), image.height()) else {
+    let Some(mask) = BrushMask::rasterize(points, style.radius, image.width(), image.height())
+    else {
         return;
     };
     let block_size = (2.0 + style.strength * style.radius * 0.5)
@@ -172,14 +176,18 @@ impl BrushMask {
 
     fn rasterize_segment(&mut self, start: Point, end: Point, radius: f32) {
         let radius_squared = radius * radius;
-        let min_x = ((start.x.min(end.x) - radius).floor().max(self.bounds.x as f32) as u32)
+        let min_x = ((start.x.min(end.x) - radius)
+            .floor()
+            .max(self.bounds.x as f32) as u32)
             .max(self.bounds.x);
-        let min_y = ((start.y.min(end.y) - radius).floor().max(self.bounds.y as f32) as u32)
+        let min_y = ((start.y.min(end.y) - radius)
+            .floor()
+            .max(self.bounds.y as f32) as u32)
             .max(self.bounds.y);
-        let max_x = ((start.x.max(end.x) + radius).ceil() as u32)
-            .min(self.bounds.x + self.bounds.width);
-        let max_y = ((start.y.max(end.y) + radius).ceil() as u32)
-            .min(self.bounds.y + self.bounds.height);
+        let max_x =
+            ((start.x.max(end.x) + radius).ceil() as u32).min(self.bounds.x + self.bounds.width);
+        let max_y =
+            ((start.y.max(end.y) + radius).ceil() as u32).min(self.bounds.y + self.bounds.height);
 
         for y in min_y..max_y {
             for x in min_x..max_x {
