@@ -5,7 +5,8 @@ use gpui::{App, AsyncApp, WindowHandle, prelude::*};
 use gpui_platform::application;
 use runtime::AppRuntime;
 use sidekick_core::{
-    CaptureRegion, Capturer, PreviewStack, PreviewVisibility, PreviewVisibilityState, XcapCapturer,
+    CaptureRegion, Capturer, PreviewStack, PreviewVisibility, PreviewVisibilityState,
+    WindowShadowPolicy, XcapCapturer,
 };
 use sidekick_ui::{
     AreaSelectorView, HotkeySettingsView, OverlayCard, PeekTab, WindowChooserView,
@@ -102,6 +103,8 @@ fn main() -> anyhow::Result<()> {
         let timer_zero_menu_id = runtime.timer_zero_menu_id().clone();
         let timer_three_menu_id = runtime.timer_three_menu_id().clone();
         let timer_five_menu_id = runtime.timer_five_menu_id().clone();
+        let shadow_include_menu_id = runtime.shadow_include_menu_id().clone();
+        let shadow_exclude_menu_id = runtime.shadow_exclude_menu_id().clone();
         let settings_menu_id = runtime.settings_menu_id().clone();
         let quit_menu_id = runtime.quit_menu_id().clone();
 
@@ -208,6 +211,12 @@ fn main() -> anyhow::Result<()> {
                     if event.id == timer_five_menu_id {
                         runtime.set_capture_delay(Duration::from_secs(5));
                     }
+                    if event.id == shadow_include_menu_id {
+                        runtime.set_window_shadow_policy(WindowShadowPolicy::Include);
+                    }
+                    if event.id == shadow_exclude_menu_id {
+                        runtime.set_window_shadow_policy(WindowShadowPolicy::Exclude);
+                    }
                     if event.id == capture_menu_id {
                         capture_request = Some(CaptureRequest::Fullscreen);
                     }
@@ -282,6 +291,7 @@ fn main() -> anyhow::Result<()> {
 
                 if let Some(request) = capture_request {
                     let delay = runtime.capture_delay();
+                    let shadow_policy = runtime.window_shadow_policy();
                     remove_preview_windows(cx, &mut preview_windows);
                     remove_peek_window(cx, &mut peek_window);
                     auto_dismiss_at = None;
@@ -292,12 +302,10 @@ fn main() -> anyhow::Result<()> {
                                 CaptureRequest::Fullscreen => {
                                     XcapCapturer.capture_fullscreen(delay)?
                                 }
-                                CaptureRequest::FocusedWindow => {
-                                    XcapCapturer.capture_focused_window(delay)?
-                                }
-                                CaptureRequest::Window(window_id) => {
-                                    XcapCapturer.capture_window(window_id, delay)?
-                                }
+                                CaptureRequest::FocusedWindow => XcapCapturer
+                                    .capture_focused_window_with_shadow(delay, shadow_policy)?,
+                                CaptureRequest::Window(window_id) => XcapCapturer
+                                    .capture_window_with_shadow(window_id, delay, shadow_policy)?,
                                 CaptureRequest::Area(region) => {
                                     XcapCapturer.capture_region(region, delay)?
                                 }

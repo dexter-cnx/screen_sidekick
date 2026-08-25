@@ -3,7 +3,7 @@ use global_hotkey::{
     GlobalHotKeyManager,
     hotkey::{Code, HotKey, Modifiers},
 };
-use sidekick_core::{HotkeyBinding, HotkeyKey, HotkeyModifiers};
+use sidekick_core::{HotkeyBinding, HotkeyKey, HotkeyModifiers, WindowShadowPolicy};
 use std::time::Duration;
 use tray_icon::{
     Icon, TrayIcon, TrayIconBuilder,
@@ -21,9 +21,12 @@ pub struct AppRuntime {
     timer_zero_menu_id: MenuId,
     timer_three_menu_id: MenuId,
     timer_five_menu_id: MenuId,
+    shadow_include_menu_id: MenuId,
+    shadow_exclude_menu_id: MenuId,
     settings_menu_id: MenuId,
     quit_menu_id: MenuId,
     capture_delay: Duration,
+    window_shadow_policy: WindowShadowPolicy,
     fullscreen_binding: HotkeyBinding,
     fullscreen_hotkey: HotKey,
     fullscreen_hotkey_id: u32,
@@ -46,6 +49,8 @@ impl AppRuntime {
         let timer_zero_item = MenuItem::new("Timer: 0 seconds", true, None);
         let timer_three_item = MenuItem::new("Timer: 3 seconds", true, None);
         let timer_five_item = MenuItem::new("Timer: 5 seconds", true, None);
+        let shadow_include_item = MenuItem::new("Window Shadow: Include", true, None);
+        let shadow_exclude_item = MenuItem::new("Window Shadow: Exclude", true, None);
         let settings_item = MenuItem::new("Settings…", true, None);
         let capture_separator = PredefinedMenuItem::separator();
         let settings_separator = PredefinedMenuItem::separator();
@@ -57,6 +62,8 @@ impl AppRuntime {
         let timer_zero_menu_id = timer_zero_item.id().clone();
         let timer_three_menu_id = timer_three_item.id().clone();
         let timer_five_menu_id = timer_five_item.id().clone();
+        let shadow_include_menu_id = shadow_include_item.id().clone();
+        let shadow_exclude_menu_id = shadow_exclude_item.id().clone();
         let settings_menu_id = settings_item.id().clone();
         let quit_menu_id = quit_item.id().clone();
 
@@ -70,6 +77,8 @@ impl AppRuntime {
             &timer_zero_item,
             &timer_three_item,
             &timer_five_item,
+            &shadow_include_item,
+            &shadow_exclude_item,
             &settings_separator,
             &settings_item,
             &quit_item,
@@ -94,9 +103,12 @@ impl AppRuntime {
             timer_zero_menu_id,
             timer_three_menu_id,
             timer_five_menu_id,
+            shadow_include_menu_id,
+            shadow_exclude_menu_id,
             settings_menu_id,
             quit_menu_id,
             capture_delay: Duration::ZERO,
+            window_shadow_policy: WindowShadowPolicy::Include,
             fullscreen_binding,
             fullscreen_hotkey,
             fullscreen_hotkey_id,
@@ -131,6 +143,14 @@ impl AppRuntime {
         &self.timer_five_menu_id
     }
 
+    pub fn shadow_include_menu_id(&self) -> &MenuId {
+        &self.shadow_include_menu_id
+    }
+
+    pub fn shadow_exclude_menu_id(&self) -> &MenuId {
+        &self.shadow_exclude_menu_id
+    }
+
     pub fn settings_menu_id(&self) -> &MenuId {
         &self.settings_menu_id
     }
@@ -146,6 +166,14 @@ impl AppRuntime {
     pub fn set_capture_delay(&mut self, delay: Duration) {
         debug_assert!(matches!(delay.as_secs(), 0 | 3 | 5));
         self.capture_delay = delay;
+    }
+
+    pub fn window_shadow_policy(&self) -> WindowShadowPolicy {
+        self.window_shadow_policy
+    }
+
+    pub fn set_window_shadow_policy(&mut self, policy: WindowShadowPolicy) {
+        self.window_shadow_policy = policy;
     }
 
     pub fn fullscreen_binding(&self) -> HotkeyBinding {
@@ -391,5 +419,10 @@ mod tests {
             capture_menu_text(HotkeyBinding::fullscreen_default()),
             "Capture Fullscreen    ⌥1"
         );
+    }
+
+    #[test]
+    fn window_shadow_defaults_to_include() {
+        assert_eq!(WindowShadowPolicy::default(), WindowShadowPolicy::Include);
     }
 }
