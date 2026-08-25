@@ -2,9 +2,9 @@ use std::ops::Range;
 
 use gpui::{
     App, Bounds, Context, CursorStyle, Element, ElementId, ElementInputHandler, Entity,
-    EntityInputHandler, FocusHandle, Focusable, GlobalElementId, IntoElement, LayoutId, PaintQuad,
-    Pixels, Point, Render, ShapedLine, SharedString, Style, TextRun, UTF16Selection, Window, div,
-    fill, point, prelude::*, px, relative, rgba, size,
+    EntityInputHandler, FocusHandle, Focusable, GlobalElementId, IntoElement, KeyDownEvent, LayoutId,
+    PaintQuad, Pixels, Point, Render, ShapedLine, SharedString, Style, TextRun, UTF16Selection,
+    Window, div, fill, point, prelude::*, px, relative, rgba, size,
 };
 
 pub struct TextDraftInput {
@@ -41,10 +41,10 @@ impl TextDraftInput {
         cx.notify();
     }
 
-    fn offset_from_utf16(&self, offset: usize) -> usize {
+    fn offset_from_utf16_in(text: &str, offset: usize) -> usize {
         let mut utf8_offset = 0;
         let mut utf16_count = 0;
-        for ch in self.content.chars() {
+        for ch in text.chars() {
             if utf16_count >= offset {
                 break;
             }
@@ -52,6 +52,10 @@ impl TextDraftInput {
             utf8_offset += ch.len_utf8();
         }
         utf8_offset
+    }
+
+    fn offset_from_utf16(&self, offset: usize) -> usize {
+        Self::offset_from_utf16_in(&self.content, offset)
     }
 
     fn offset_to_utf16(&self, offset: usize) -> usize {
@@ -73,6 +77,80 @@ impl TextDraftInput {
 
     fn range_from_utf16(&self, range: &Range<usize>) -> Range<usize> {
         self.offset_from_utf16(range.start)..self.offset_from_utf16(range.end)
+    }
+
+    fn range_from_utf16_in(text: &str, range: &Range<usize>) -> Range<usize> {
+        Self::offset_from_utf16_in(text, range.start)..Self::offset_from_utf16_in(text, range.end)
+    }
+
+    fn previous_char_boundary(&self, offset: usize) -> usize {
+        self.content[..offset]
+            .char_indices()
+            .next_back()
+            .map(|(index, _)| index)
+            .unwrap_or(0)
+    }
+
+    fn next_char_boundary(&self, offset: usize) -> usize {
+        self.content[offset..]
+            .char_indices()
+            .nth(1)
+            .map(|(index, _)| offset + index)
+            .unwrap_or(self.content.len())
+    }
+
+    fn delete_range(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
+        let content = self.content.to_string();
+        self.content = (content[..range.start].to_owned() + &content[range.end..]).into();
+        self.selected_range = range.start..range.start;
+        self.marked_range = None;
+        cx.notify();
+    }
+
+    fn handle_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        if event.keystroke.is_ime_in_progress() {
+            return;
+        }
+
+        match event.keystroke.key.as_str() {
+            "backspace" => {
+                if self.selected_range.start != self.selected_range.end {
+                    self.delete_range(self.selected_range.clone(), cx);
+                } else if self.selected_range.start > 0 {
+                    let start = self.previous_char_boundary(self.selected_range.start);
+                    self.delete_range(start..self.selected_range.start, cx);
+                }
+            }
+            "delete" => {
+                if self.selected_range.start != self.selected_range.end {
+                    self.delete_range(self.selected_range.clone(), cx);
+                } else if self.selected_range.end < self.content.len() {
+                    let end = self.next_char_boundary(self.selected_range.end);
+                    self.delete_range(self.selected_range.end..end, cx);
+                }
+            }
+            "left" => {
+                let cursor = if self.selected_range.start != self.selected_range.end {
+                    self.selected_range.start
+                } else {
+                    self.previous_char_boundary(self.selected_range.start)
+                };
+                self.selected_range = cursor..cursor;
+                self.marked_range = None;
+                cx.notify();
+            }
+            "right" => {
+                let cursor = if self.selected_range.start != self.selected_range.end {
+                    self.selected_range.end
+                } else {
+                    self.next_char_boundary(self.selected_range.end)
+                };
+                self.selected_range = cursor..cursor;
+                self.marked_range = None;
+                cx.notify();
+            }
+            _ => {}
+        }
     }
 }
 
@@ -134,7 +212,8 @@ impl EntityInputHandler for TextDraftInput {
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
         let content = self.content.to_string();
-        self.content = (content[..range.start].to_owned() + new_text + &content[range.end..]).into();
+        self.content =
+            (content[..range.start].to_owned() + new_text + &content[range.end..]).into();
         let cursor = range.start + new_text.len();
         self.selected_range = cursor..cursor;
         self.marked_range = None;
@@ -155,11 +234,13 @@ impl EntityInputHandler for TextDraftInput {
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
         let content = self.content.to_string();
-        self.content = (content[..range.start].to_owned() + new_text + &content[range.end..]).into();
-        self.marked_range = (!new_text.is_empty()).then_some(range.start..range.start + new_text.len());
+        self.content =
+            (content[..range.start].to_owned() + new_text + &content[range.end..]).into();
+        self.marked_range =
+            (!new_text.is_empty()).then_some(range.start..range.start + new_text.len());
         self.selected_range = new_selected_range_utf16
             .as_ref()
-            .map(|range_utf16| self.range_from_utf16(range_utf16))
+            .map(|range_utf16| Self::range_from_utf16_in(new_text, range_utf16))
             .map(|selected| range.start + selected.start..range.start + selected.end)
             .unwrap_or_else(|| {
                 let cursor = range.start + new_text.len();
@@ -263,7 +344,9 @@ impl Element for TextDraftElement {
             strikethrough: None,
         };
         let font_size = style.font_size.to_pixels(window.rem_size());
-        let line = window.text_system().shape_line(display, font_size, &[run], None);
+        let line = window
+            .text_system()
+            .shape_line(display, font_size, &[run], None);
         let cursor_x = line.x_for_index(input.selected_range.end.min(line.text.len()));
         let cursor = fill(
             Bounds::new(
@@ -329,6 +412,29 @@ impl Render for TextDraftInput {
             .text_size(px(14.0))
             .cursor(CursorStyle::IBeam)
             .track_focus(&self.focus_handle(cx))
+            .on_key_down(cx.listener(|input, event, _window, cx| {
+                input.handle_key_down(event, cx);
+            }))
             .child(TextDraftElement { input: cx.entity() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TextDraftInput;
+
+    #[test]
+    fn converts_utf16_offsets_against_inserted_text() {
+        let inserted = "ก😀x";
+        assert_eq!(TextDraftInput::offset_from_utf16_in(inserted, 0), 0);
+        assert_eq!(TextDraftInput::offset_from_utf16_in(inserted, 1), 3);
+        assert_eq!(TextDraftInput::offset_from_utf16_in(inserted, 3), 7);
+        assert_eq!(TextDraftInput::offset_from_utf16_in(inserted, 4), 8);
+    }
+
+    #[test]
+    fn converts_relative_utf16_selection_to_inserted_utf8_range() {
+        let inserted = "😀ก";
+        assert_eq!(TextDraftInput::range_from_utf16_in(inserted, &(2..3)), 4..7);
     }
 }
