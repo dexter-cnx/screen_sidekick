@@ -241,7 +241,9 @@ fn translate_annotation(annotation: &mut Annotation, dx: f32, dy: f32) {
             translate_point(start, dx, dy);
             translate_point(end, dx, dy);
         }
-        Annotation::Freehand { points, .. } => {
+        Annotation::Freehand { points, .. }
+        | Annotation::BlurBrush { points, .. }
+        | Annotation::PixelateBrush { points, .. } => {
             for point in points {
                 translate_point(point, dx, dy);
             }
@@ -263,7 +265,9 @@ fn scale_annotation(annotation: &mut Annotation, origin: Point, scale_x: f32, sc
             scale_point(start, origin, scale_x, scale_y);
             scale_point(end, origin, scale_x, scale_y);
         }
-        Annotation::Freehand { points, .. } => {
+        Annotation::Freehand { points, .. }
+        | Annotation::BlurBrush { points, .. }
+        | Annotation::PixelateBrush { points, .. } => {
             for point in points {
                 scale_point(point, origin, scale_x, scale_y);
             }
@@ -280,7 +284,7 @@ fn scale_annotation(annotation: &mut Annotation, origin: Point, scale_x: f32, sc
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AnnotationStyle;
+    use crate::{AnnotationStyle, EffectBrushStyle};
     use std::path::PathBuf;
 
     fn base() -> BaseImage {
@@ -342,6 +346,34 @@ mod tests {
         );
         assert_eq!(document.delete_selected(), 2);
         assert_eq!(document.annotations().len(), 1);
+    }
+
+    #[test]
+    fn effect_brush_points_participate_in_editor_transforms() {
+        let style = EffectBrushStyle::new(12.0, 0.5);
+        let mut blur = Annotation::BlurBrush {
+            points: vec![Point { x: 2.0, y: 3.0 }, Point { x: 4.0, y: 5.0 }],
+            style: style.clone(),
+        };
+        translate_annotation(&mut blur, 10.0, -1.0);
+        scale_annotation(&mut blur, Point { x: 0.0, y: 0.0 }, 2.0, 3.0);
+        assert!(matches!(
+            blur,
+            Annotation::BlurBrush { ref points, .. }
+                if points[0] == Point { x: 24.0, y: 6.0 }
+                    && points[1] == Point { x: 28.0, y: 12.0 }
+        ));
+
+        let mut pixelate = Annotation::PixelateBrush {
+            points: vec![Point { x: 1.0, y: 2.0 }],
+            style,
+        };
+        translate_annotation(&mut pixelate, 2.0, 3.0);
+        assert!(matches!(
+            pixelate,
+            Annotation::PixelateBrush { ref points, .. }
+                if points[0] == Point { x: 3.0, y: 5.0 }
+        ));
     }
 
     #[test]
