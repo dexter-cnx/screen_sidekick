@@ -3,6 +3,7 @@ pub mod area_selector;
 pub mod native_window;
 pub mod overlay;
 pub mod settings;
+pub mod text_input;
 pub mod window_chooser;
 
 pub use annotation_canvas::{AnnotationCanvasView, AnnotationTool, annotation_window_options};
