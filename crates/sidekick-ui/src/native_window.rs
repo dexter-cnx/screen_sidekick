@@ -1,12 +1,12 @@
 use gpui::Window;
 
-pub fn apply_overlay_window_behavior(window: &Window) {
+pub fn apply_overlay_window_behavior(window: &Window, click_through: bool) {
     #[cfg(target_os = "macos")]
-    apply_macos_overlay_window_behavior(window);
+    apply_macos_overlay_window_behavior(window, click_through);
 }
 
 #[cfg(target_os = "macos")]
-fn apply_macos_overlay_window_behavior(window: &Window) {
+fn apply_macos_overlay_window_behavior(window: &Window, click_through: bool) {
     use objc2_app_kit::{
         NSFloatingWindowLevel, NSView, NSWindowCollectionBehavior, NSWindowSharingType,
     };
@@ -31,4 +31,5 @@ fn apply_macos_overlay_window_behavior(window: &Window) {
     behavior.insert(NSWindowCollectionBehavior::FullScreenAuxiliary);
     ns_window.setCollectionBehavior(behavior);
     ns_window.setSharingType(NSWindowSharingType::None);
+    ns_window.setIgnoresMouseEvents(click_through);
 }
