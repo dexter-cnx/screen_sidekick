@@ -1,3 +1,4 @@
+mod preferences;
 mod runtime;
 
 use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
@@ -95,7 +96,8 @@ fn show_peek_window(
 
 fn main() -> anyhow::Result<()> {
     application().run(|cx: &mut App| {
-        let runtime = AppRuntime::new().expect("failed to initialize tray/hotkey runtime");
+        let mut runtime = AppRuntime::new().expect("failed to initialize tray/hotkey runtime");
+        runtime.set_window_shadow_policy(preferences::load_window_shadow_policy());
         let capture_menu_id = runtime.capture_menu_id().clone();
         let capture_window_menu_id = runtime.capture_window_menu_id().clone();
         let choose_window_menu_id = runtime.choose_window_menu_id().clone();
@@ -213,9 +215,11 @@ fn main() -> anyhow::Result<()> {
                     }
                     if event.id == shadow_include_menu_id {
                         runtime.set_window_shadow_policy(WindowShadowPolicy::Include);
+                        preferences::save_window_shadow_policy(WindowShadowPolicy::Include);
                     }
                     if event.id == shadow_exclude_menu_id {
                         runtime.set_window_shadow_policy(WindowShadowPolicy::Exclude);
+                        preferences::save_window_shadow_policy(WindowShadowPolicy::Exclude);
                     }
                     if event.id == capture_menu_id {
                         capture_request = Some(CaptureRequest::Fullscreen);

@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+dirs.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
 global-hotkey.workspace = true
