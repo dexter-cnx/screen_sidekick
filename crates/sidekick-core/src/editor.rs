@@ -37,12 +37,18 @@ impl BaseImage {
 }
 
 #[derive(Debug, Clone)]
+struct EditorSnapshot {
+    annotations: Vec<Annotation>,
+    selection: BTreeSet<usize>,
+}
+
+#[derive(Debug, Clone)]
 pub struct EditorDocument {
     base: BaseImage,
     sidecar: SidecarDocument,
     selection: BTreeSet<usize>,
-    undo_stack: Vec<Vec<Annotation>>,
-    redo_stack: Vec<Vec<Annotation>>,
+    undo_stack: Vec<EditorSnapshot>,
+    redo_stack: Vec<EditorSnapshot>,
 }
 
 impl EditorDocument {
@@ -180,9 +186,8 @@ impl EditorDocument {
         let Some(previous) = self.undo_stack.pop() else {
             return false;
         };
-        self.redo_stack.push(self.sidecar.annotations.clone());
-        self.sidecar.annotations = previous;
-        self.selection.retain(|index| *index < self.sidecar.annotations.len());
+        self.redo_stack.push(self.snapshot());
+        self.restore_snapshot(previous);
         true
     }
 
@@ -190,14 +195,25 @@ impl EditorDocument {
         let Some(next) = self.redo_stack.pop() else {
             return false;
         };
-        self.undo_stack.push(self.sidecar.annotations.clone());
-        self.sidecar.annotations = next;
-        self.selection.retain(|index| *index < self.sidecar.annotations.len());
+        self.undo_stack.push(self.snapshot());
+        self.restore_snapshot(next);
         true
     }
 
+    fn snapshot(&self) -> EditorSnapshot {
+        EditorSnapshot {
+            annotations: self.sidecar.annotations.clone(),
+            selection: self.selection.clone(),
+        }
+    }
+
+    fn restore_snapshot(&mut self, snapshot: EditorSnapshot) {
+        self.sidecar.annotations = snapshot.annotations;
+        self.selection = snapshot.selection;
+    }
+
     fn record_history(&mut self) {
-        self.undo_stack.push(self.sidecar.annotations.clone());
+        self.undo_stack.push(self.snapshot());
         self.redo_stack.clear();
     }
 }
@@ -320,7 +336,10 @@ mod tests {
         assert!(document.select_only(0));
         assert!(document.toggle_selection(2));
         assert_eq!(document.translate_selected(10.0, 5.0), 2);
-        assert_eq!(document.scale_selected(Point { x: 0.0, y: 0.0 }, 2.0, 2.0), 2);
+        assert_eq!(
+            document.scale_selected(Point { x: 0.0, y: 0.0 }, 2.0, 2.0),
+            2
+        );
         assert_eq!(document.delete_selected(), 2);
         assert_eq!(document.annotations().len(), 1);
     }
@@ -337,6 +356,25 @@ mod tests {
         assert!(document.can_redo());
         assert!(document.redo());
         assert!(matches!(document.annotations()[0], Annotation::Rectangle { x, .. } if x == 11.0));
+    }
+
+    #[test]
+    fn undo_and_redo_restore_selection_identity_by_snapshot() {
+        let mut document = EditorDocument::new(base());
+        document.add_annotation(rectangle(1.0));
+        document.add_annotation(rectangle(2.0));
+        document.add_annotation(rectangle(3.0));
+        document.select_only(1);
+        document.delete_selected();
+        document.select_only(1);
+
+        assert!(document.undo());
+        assert_eq!(document.selected_indices().collect::<Vec<_>>(), vec![1]);
+        assert!(matches!(document.annotations()[1], Annotation::Rectangle { x, .. } if x == 2.0));
+
+        assert!(document.redo());
+        assert_eq!(document.selected_indices().collect::<Vec<_>>(), vec![1]);
+        assert!(matches!(document.annotations()[1], Annotation::Rectangle { x, .. } if x == 3.0));
     }
 
     #[test]
