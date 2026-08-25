@@ -8,18 +8,20 @@ pub fn apply_overlay_window_behavior(window: &Window) {
 #[cfg(target_os = "macos")]
 fn apply_macos_overlay_window_behavior(window: &Window) {
     use objc2_app_kit::{
-        NSFloatingWindowLevel, NSWindow, NSWindowCollectionBehavior, NSWindowSharingType,
+        NSFloatingWindowLevel, NSView, NSWindowCollectionBehavior, NSWindowSharingType,
     };
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use raw_window_handle::RawWindowHandle;
 
-    let Ok(handle) = window.window_handle() else {
-        return;
-    };
+    let handle = window.window_handle();
     let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
         return;
     };
 
-    let ns_window = unsafe { &*handle.ns_window.as_ptr().cast::<NSWindow>() };
+    let ns_view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+    let Some(ns_window) = ns_view.window() else {
+        return;
+    };
+
     ns_window.setLevel(unsafe { NSFloatingWindowLevel });
 
     let mut behavior = ns_window.collectionBehavior();
