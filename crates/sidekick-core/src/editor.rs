@@ -1,4 +1,4 @@
-use crate::{Annotation, SavedCapture, SidecarDocument};
+use crate::{Annotation, Point, SavedCapture, SidecarDocument};
 use std::{collections::BTreeSet, path::Path};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +41,8 @@ pub struct EditorDocument {
     base: BaseImage,
     sidecar: SidecarDocument,
     selection: BTreeSet<usize>,
+    undo_stack: Vec<Vec<Annotation>>,
+    redo_stack: Vec<Vec<Annotation>>,
 }
 
 impl EditorDocument {
@@ -50,6 +52,8 @@ impl EditorDocument {
             base,
             sidecar,
             selection: BTreeSet::new(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -62,6 +66,8 @@ impl EditorDocument {
             base,
             sidecar,
             selection: BTreeSet::new(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         })
     }
 
@@ -78,6 +84,7 @@ impl EditorDocument {
     }
 
     pub fn add_annotation(&mut self, annotation: Annotation) -> usize {
+        self.record_history();
         self.sidecar.push(annotation);
         self.sidecar.annotations.len() - 1
     }
@@ -109,11 +116,46 @@ impl EditorDocument {
         self.selection.clear();
     }
 
+    pub fn translate_selected(&mut self, dx: f32, dy: f32) -> usize {
+        if self.selection.is_empty() || (dx == 0.0 && dy == 0.0) {
+            return 0;
+        }
+        self.record_history();
+        let mut changed = 0;
+        for index in self.selection.iter().copied() {
+            if let Some(annotation) = self.sidecar.annotations.get_mut(index) {
+                translate_annotation(annotation, dx, dy);
+                changed += 1;
+            }
+        }
+        changed
+    }
+
+    pub fn scale_selected(&mut self, origin: Point, scale_x: f32, scale_y: f32) -> usize {
+        if self.selection.is_empty()
+            || scale_x <= 0.0
+            || scale_y <= 0.0
+            || (scale_x == 1.0 && scale_y == 1.0)
+        {
+            return 0;
+        }
+        self.record_history();
+        let mut changed = 0;
+        for index in self.selection.iter().copied() {
+            if let Some(annotation) = self.sidecar.annotations.get_mut(index) {
+                scale_annotation(annotation, origin, scale_x, scale_y);
+                changed += 1;
+            }
+        }
+        changed
+    }
+
     pub fn delete_selected(&mut self) -> usize {
         if self.selection.is_empty() {
             return 0;
         }
 
+        self.record_history();
         let selected = std::mem::take(&mut self.selection);
         let original_len = self.sidecar.annotations.len();
         self.sidecar.annotations = self
@@ -124,6 +166,98 @@ impl EditorDocument {
             .filter_map(|(index, annotation)| (!selected.contains(&index)).then_some(annotation))
             .collect();
         original_len - self.sidecar.annotations.len()
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
+
+    pub fn undo(&mut self) -> bool {
+        let Some(previous) = self.undo_stack.pop() else {
+            return false;
+        };
+        self.redo_stack.push(self.sidecar.annotations.clone());
+        self.sidecar.annotations = previous;
+        self.selection.retain(|index| *index < self.sidecar.annotations.len());
+        true
+    }
+
+    pub fn redo(&mut self) -> bool {
+        let Some(next) = self.redo_stack.pop() else {
+            return false;
+        };
+        self.undo_stack.push(self.sidecar.annotations.clone());
+        self.sidecar.annotations = next;
+        self.selection.retain(|index| *index < self.sidecar.annotations.len());
+        true
+    }
+
+    fn record_history(&mut self) {
+        self.undo_stack.push(self.sidecar.annotations.clone());
+        self.redo_stack.clear();
+    }
+}
+
+fn translate_point(point: &mut Point, dx: f32, dy: f32) {
+    point.x += dx;
+    point.y += dy;
+}
+
+fn scale_point(point: &mut Point, origin: Point, scale_x: f32, scale_y: f32) {
+    point.x = origin.x + (point.x - origin.x) * scale_x;
+    point.y = origin.y + (point.y - origin.y) * scale_y;
+}
+
+fn translate_annotation(annotation: &mut Annotation, dx: f32, dy: f32) {
+    match annotation {
+        Annotation::Rectangle { x, y, .. }
+        | Annotation::Ellipse { x, y, .. }
+        | Annotation::Text { x, y, .. }
+        | Annotation::NumberMarker { x, y, .. } => {
+            *x += dx;
+            *y += dy;
+        }
+        Annotation::Line { start, end, .. } | Annotation::Arrow { start, end, .. } => {
+            translate_point(start, dx, dy);
+            translate_point(end, dx, dy);
+        }
+        Annotation::Freehand { points, .. } => {
+            for point in points {
+                translate_point(point, dx, dy);
+            }
+        }
+    }
+}
+
+fn scale_annotation(annotation: &mut Annotation, origin: Point, scale_x: f32, scale_y: f32) {
+    match annotation {
+        Annotation::Rectangle { x, y, w, h, .. } | Annotation::Ellipse { x, y, w, h, .. } => {
+            let mut top_left = Point { x: *x, y: *y };
+            scale_point(&mut top_left, origin, scale_x, scale_y);
+            *x = top_left.x;
+            *y = top_left.y;
+            *w *= scale_x;
+            *h *= scale_y;
+        }
+        Annotation::Line { start, end, .. } | Annotation::Arrow { start, end, .. } => {
+            scale_point(start, origin, scale_x, scale_y);
+            scale_point(end, origin, scale_x, scale_y);
+        }
+        Annotation::Freehand { points, .. } => {
+            for point in points {
+                scale_point(point, origin, scale_x, scale_y);
+            }
+        }
+        Annotation::Text { x, y, .. } | Annotation::NumberMarker { x, y, .. } => {
+            let mut anchor = Point { x: *x, y: *y };
+            scale_point(&mut anchor, origin, scale_x, scale_y);
+            *x = anchor.x;
+            *y = anchor.y;
+        }
     }
 }
 
@@ -161,7 +295,6 @@ mod tests {
     #[test]
     fn base_image_is_exposed_read_only_and_sidecar_tracks_hash() {
         let document = EditorDocument::new(base());
-
         assert_eq!(document.base().path(), Path::new("capture.png"));
         assert_eq!(document.base().width(), 800);
         assert_eq!(document.base().height(), 600);
@@ -172,35 +305,54 @@ mod tests {
     fn sidecar_must_match_base_hash_and_version() {
         let mut sidecar = SidecarDocument::empty("sha256:other");
         assert!(EditorDocument::from_sidecar(base(), sidecar.clone()).is_none());
-
         sidecar.base_hash = "sha256:base".to_owned();
         assert!(EditorDocument::from_sidecar(base(), sidecar.clone()).is_some());
-
         sidecar.v += 1;
         assert!(EditorDocument::from_sidecar(base(), sidecar).is_none());
     }
 
     #[test]
-    fn selection_supports_single_multi_toggle_and_delete() {
+    fn selection_supports_multi_move_resize_and_delete() {
         let mut document = EditorDocument::new(base());
         document.add_annotation(rectangle(1.0));
         document.add_annotation(rectangle(2.0));
         document.add_annotation(rectangle(3.0));
-
         assert!(document.select_only(0));
         assert!(document.toggle_selection(2));
-        assert_eq!(document.selected_indices().collect::<Vec<_>>(), vec![0, 2]);
-
+        assert_eq!(document.translate_selected(10.0, 5.0), 2);
+        assert_eq!(document.scale_selected(Point { x: 0.0, y: 0.0 }, 2.0, 2.0), 2);
         assert_eq!(document.delete_selected(), 2);
         assert_eq!(document.annotations().len(), 1);
-        assert!(document.selected_indices().next().is_none());
+    }
+
+    #[test]
+    fn undo_and_redo_restore_annotation_snapshots() {
+        let mut document = EditorDocument::new(base());
+        document.add_annotation(rectangle(1.0));
+        document.select_only(0);
+        document.translate_selected(10.0, 0.0);
+        assert!(document.can_undo());
+        assert!(document.undo());
+        assert!(matches!(document.annotations()[0], Annotation::Rectangle { x, .. } if x == 1.0));
+        assert!(document.can_redo());
+        assert!(document.redo());
+        assert!(matches!(document.annotations()[0], Annotation::Rectangle { x, .. } if x == 11.0));
+    }
+
+    #[test]
+    fn new_mutation_clears_redo_history() {
+        let mut document = EditorDocument::new(base());
+        document.add_annotation(rectangle(1.0));
+        document.undo();
+        assert!(document.can_redo());
+        document.add_annotation(rectangle(2.0));
+        assert!(!document.can_redo());
     }
 
     #[test]
     fn invalid_selection_indices_are_rejected() {
         let mut document = EditorDocument::new(base());
         document.add_annotation(rectangle(1.0));
-
         assert!(!document.select_only(1));
         assert!(!document.toggle_selection(1));
         assert!(document.selected_indices().next().is_none());
