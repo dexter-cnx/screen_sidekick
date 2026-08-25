@@ -1,7 +1,7 @@
 use gpui::{
     App, Bounds, Context, CursorStyle, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    PathBuilder, Pixels, Point, Render, Window, WindowBounds, WindowOptions, canvas, div, img, point,
-    prelude::*, px, rgba, size,
+    PathBuilder, Pixels, Point, Render, Window, WindowBounds, WindowOptions, canvas, div, img,
+    point, prelude::*, px, rgba, size,
 };
 use sidekick_core::{Annotation, AnnotationStyle, EditorDocument, Point as CorePoint};
 
@@ -614,13 +614,7 @@ fn paint_arrow_head(
         y: base_y - ux * wing,
     };
 
-    paint_polyline(
-        window,
-        &[left, end, right],
-        style,
-        geometry,
-        canvas_origin,
-    );
+    paint_polyline(window, &[left, end, right], style, geometry, canvas_origin);
 }
 
 fn to_window_point(
