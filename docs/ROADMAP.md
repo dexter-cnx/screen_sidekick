@@ -49,7 +49,7 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] click-through only while collapsed
 
 ## M3 — Annotation foundation
-- [ ] immutable base image
+- [x] immutable base image
 - [x] `.sidekick.json` versioned sidecar
 - [ ] selection/move/resize/multi-select
 - [ ] rectangle/filled rect/ellipse/line/arrow/freehand
