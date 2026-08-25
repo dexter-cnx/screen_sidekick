@@ -229,9 +229,12 @@ impl Render for AnnotationCanvasView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let geometry = self.image_geometry();
         let preview = self.drag_bounds(geometry);
-        let annotations = self.document.annotations().to_vec();
-        let shape_annotations = annotations.clone();
-        let path_annotations = annotations;
+        let annotation_layers = self
+            .document
+            .annotations()
+            .iter()
+            .cloned()
+            .filter_map(|annotation| render_annotation_layer(annotation, geometry));
         let base_path = self.document.base().path().to_path_buf();
         let active_tool = self.active_tool;
         let drag_start = self.drag_start;
@@ -321,24 +324,12 @@ impl Render for AnnotationCanvasView {
                             .h(px(geometry.height))
                             .object_fit(gpui::ObjectFit::Contain),
                     )
-                    .children(
-                        shape_annotations
-                            .into_iter()
-                            .filter_map(|annotation| render_shape_annotation(annotation, geometry)),
-                    )
+                    .children(annotation_layers)
                     .child(
                         canvas(
                             move |_, _, _| {},
                             move |bounds, _, window, _| {
                                 let canvas_origin = bounds.origin;
-                                for annotation in path_annotations {
-                                    paint_path_annotation(
-                                        window,
-                                        annotation,
-                                        geometry,
-                                        canvas_origin,
-                                    );
-                                }
 
                                 if matches!(
                                     active_tool,
@@ -503,21 +494,39 @@ fn tool_button(
         }))
 }
 
-fn render_shape_annotation(annotation: Annotation, geometry: ImageGeometry) -> Option<gpui::Div> {
+fn render_annotation_layer(
+    annotation: Annotation,
+    geometry: ImageGeometry,
+) -> Option<gpui::AnyElement> {
     match annotation {
         Annotation::Rectangle { x, y, w, h, style } => {
-            Some(styled_shape(x, y, w, h, style, geometry, false))
+            Some(styled_shape(x, y, w, h, style, geometry, false).into_any_element())
         }
         Annotation::Ellipse { x, y, w, h, style } => {
-            Some(styled_shape(x, y, w, h, style, geometry, true))
+            Some(styled_shape(x, y, w, h, style, geometry, true).into_any_element())
         }
         Annotation::NumberMarker {
             x,
             y,
             number,
             style,
-        } => Some(render_number_marker(x, y, number, style, geometry)),
-        _ => None,
+        } => Some(render_number_marker(x, y, number, style, geometry).into_any_element()),
+        annotation @ (Annotation::Line { .. }
+        | Annotation::Arrow { .. }
+        | Annotation::Freehand { .. }) => Some(
+            canvas(
+                move |_, _, _| {},
+                move |bounds, _, window, _| {
+                    paint_path_annotation(window, annotation, geometry, bounds.origin);
+                },
+            )
+            .absolute()
+            .left(px(0.0))
+            .top(px(0.0))
+            .size_full()
+            .into_any_element(),
+        ),
+        Annotation::Text { .. } => None,
     }
 }
 
@@ -574,7 +583,7 @@ fn render_number_marker(
     style: MarkerStyle,
     geometry: ImageGeometry,
 ) -> gpui::Div {
-    let diameter = (style.diameter * geometry.scale).max(16.0);
+    let diameter = style.diameter * geometry.scale;
     let left = geometry.origin_x + x * geometry.scale - diameter / 2.0;
     let top = geometry.origin_y + y * geometry.scale - diameter / 2.0;
     let foreground = parse_color(&style.foreground).unwrap_or_else(|| rgba(0xffffffff));
@@ -592,7 +601,7 @@ fn render_number_marker(
         .justify_center()
         .bg(background)
         .text_color(foreground)
-        .text_size(px((diameter * 0.52).max(11.0)))
+        .text_size(px(diameter * 0.52))
         .child(number.to_string())
 }
 
