@@ -1,6 +1,7 @@
 use gpui::{
     App, Bounds, Context, CursorStyle, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Render, Window, WindowBounds, WindowOptions, div, img, point, prelude::*, px, rgba, size,
+    PathBuilder, Render, Window, WindowBounds, WindowOptions, canvas, div, img, point, prelude::*,
+    px, rgba, size,
 };
 use sidekick_core::{Annotation, AnnotationStyle, EditorDocument, Point as CorePoint};
 
@@ -16,6 +17,9 @@ pub enum AnnotationTool {
     Rectangle,
     FilledRectangle,
     Ellipse,
+    Line,
+    Arrow,
+    Freehand,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -32,6 +36,7 @@ pub struct AnnotationCanvasView {
     active_tool: AnnotationTool,
     drag_start: Option<CorePoint>,
     drag_current: Option<CorePoint>,
+    freehand_points: Vec<CorePoint>,
 }
 
 impl AnnotationCanvasView {
@@ -41,6 +46,7 @@ impl AnnotationCanvasView {
             active_tool: AnnotationTool::Select,
             drag_start: None,
             drag_current: None,
+            freehand_points: Vec::new(),
         }
     }
 
@@ -56,6 +62,7 @@ impl AnnotationCanvasView {
         self.active_tool = tool;
         self.drag_start = None;
         self.drag_current = None;
+        self.freehand_points.clear();
     }
 
     fn image_geometry(&self) -> ImageGeometry {
@@ -94,6 +101,13 @@ impl AnnotationCanvasView {
     }
 
     fn drag_bounds(&self, geometry: ImageGeometry) -> Option<Bounds<gpui::Pixels>> {
+        if matches!(
+            self.active_tool,
+            AnnotationTool::Line | AnnotationTool::Arrow | AnnotationTool::Freehand
+        ) {
+            return None;
+        }
+
         let start = self.drag_start?;
         let current = self.drag_current?;
         let left = start.x.min(current.x) * geometry.scale + geometry.origin_x;
@@ -106,59 +120,94 @@ impl AnnotationCanvasView {
         ))
     }
 
-    fn finish_shape(&mut self, end: CorePoint) {
+    fn outline_style() -> AnnotationStyle {
+        AnnotationStyle {
+            stroke: "#ff3b30".to_owned(),
+            stroke_width: 3.0,
+            fill: None,
+        }
+    }
+
+    fn finish_drag(&mut self, end: CorePoint) {
         let Some(start) = self.drag_start.take() else {
             return;
         };
         self.drag_current = None;
 
-        let x = start.x.min(end.x);
-        let y = start.y.min(end.y);
-        let w = (start.x - end.x).abs();
-        let h = (start.y - end.y).abs();
-        if w < 2.0 || h < 2.0 {
-            return;
-        }
-
-        let outline = AnnotationStyle {
-            stroke: "#ff3b30".to_owned(),
-            stroke_width: 3.0,
-            fill: None,
-        };
-        let filled = AnnotationStyle {
-            stroke: "#ff3b30".to_owned(),
-            stroke_width: 3.0,
-            fill: Some("#ff3b3044".to_owned()),
-        };
-
         let annotation = match self.active_tool {
-            AnnotationTool::Rectangle => Some(Annotation::Rectangle {
-                x,
-                y,
-                w,
-                h,
-                style: outline,
-            }),
-            AnnotationTool::FilledRectangle => Some(Annotation::Rectangle {
-                x,
-                y,
-                w,
-                h,
-                style: filled,
-            }),
-            AnnotationTool::Ellipse => Some(Annotation::Ellipse {
-                x,
-                y,
-                w,
-                h,
-                style: outline,
-            }),
-            AnnotationTool::Select => None,
+            AnnotationTool::Rectangle | AnnotationTool::FilledRectangle | AnnotationTool::Ellipse => {
+                let x = start.x.min(end.x);
+                let y = start.y.min(end.y);
+                let w = (start.x - end.x).abs();
+                let h = (start.y - end.y).abs();
+                if w < 2.0 || h < 2.0 {
+                    return;
+                }
+
+                let mut style = Self::outline_style();
+                if self.active_tool == AnnotationTool::FilledRectangle {
+                    style.fill = Some("#ff3b3044".to_owned());
+                }
+
+                match self.active_tool {
+                    AnnotationTool::Rectangle | AnnotationTool::FilledRectangle => {
+                        Some(Annotation::Rectangle {
+                            x,
+                            y,
+                            w,
+                            h,
+                            style,
+                        })
+                    }
+                    AnnotationTool::Ellipse => Some(Annotation::Ellipse {
+                        x,
+                        y,
+                        w,
+                        h,
+                        style,
+                    }),
+                    _ => None,
+                }
+            }
+            AnnotationTool::Line => {
+                if distance(start, end) < 2.0 {
+                    return;
+                }
+                Some(Annotation::Line {
+                    start,
+                    end,
+                    style: Self::outline_style(),
+                })
+            }
+            AnnotationTool::Arrow => {
+                if distance(start, end) < 2.0 {
+                    return;
+                }
+                Some(Annotation::Arrow {
+                    start,
+                    end,
+                    style: Self::outline_style(),
+                })
+            }
+            AnnotationTool::Select | AnnotationTool::Freehand => None,
         };
 
         if let Some(annotation) = annotation {
             self.document.add_annotation(annotation);
         }
+    }
+
+    fn finish_freehand(&mut self) {
+        if self.freehand_points.len() < 2 {
+            self.freehand_points.clear();
+            return;
+        }
+
+        let points = std::mem::take(&mut self.freehand_points);
+        self.document.add_annotation(Annotation::Freehand {
+            points,
+            style: Self::outline_style(),
+        });
     }
 }
 
@@ -167,7 +216,13 @@ impl Render for AnnotationCanvasView {
         let geometry = self.image_geometry();
         let preview = self.drag_bounds(geometry);
         let annotations = self.document.annotations().to_vec();
+        let shape_annotations = annotations.clone();
+        let path_annotations = annotations;
         let base_path = self.document.base().path().to_path_buf();
+        let active_tool = self.active_tool;
+        let drag_start = self.drag_start;
+        let drag_current = self.drag_current;
+        let freehand_preview = self.freehand_points.clone();
 
         div()
             .size_full()
@@ -206,6 +261,24 @@ impl Render for AnnotationCanvasView {
                         AnnotationTool::Ellipse,
                         self.active_tool,
                         cx,
+                    ))
+                    .child(tool_button(
+                        "Line",
+                        AnnotationTool::Line,
+                        self.active_tool,
+                        cx,
+                    ))
+                    .child(tool_button(
+                        "Arrow",
+                        AnnotationTool::Arrow,
+                        self.active_tool,
+                        cx,
+                    ))
+                    .child(tool_button(
+                        "Freehand",
+                        AnnotationTool::Freehand,
+                        self.active_tool,
+                        cx,
                     )),
             )
             .child(
@@ -229,9 +302,51 @@ impl Render for AnnotationCanvasView {
                             .object_fit(gpui::ObjectFit::Contain),
                     )
                     .children(
-                        annotations
+                        shape_annotations
                             .into_iter()
-                            .filter_map(|annotation| render_annotation(annotation, geometry)),
+                            .filter_map(|annotation| render_shape_annotation(annotation, geometry)),
+                    )
+                    .child(
+                        canvas(
+                            move |_, _, _| {},
+                            move |_, _, window, _| {
+                                for annotation in path_annotations {
+                                    paint_path_annotation(window, annotation, geometry);
+                                }
+
+                                if matches!(active_tool, AnnotationTool::Line | AnnotationTool::Arrow)
+                                    && let (Some(start), Some(end)) = (drag_start, drag_current)
+                                {
+                                    let annotation = if active_tool == AnnotationTool::Arrow {
+                                        Annotation::Arrow {
+                                            start,
+                                            end,
+                                            style: AnnotationCanvasView::outline_style(),
+                                        }
+                                    } else {
+                                        Annotation::Line {
+                                            start,
+                                            end,
+                                            style: AnnotationCanvasView::outline_style(),
+                                        }
+                                    };
+                                    paint_path_annotation(window, annotation, geometry);
+                                }
+
+                                if active_tool == AnnotationTool::Freehand && freehand_preview.len() >= 2 {
+                                    paint_polyline(
+                                        window,
+                                        &freehand_preview,
+                                        &AnnotationCanvasView::outline_style(),
+                                        geometry,
+                                    );
+                                }
+                            },
+                        )
+                        .absolute()
+                        .left(px(0.0))
+                        .top(px(0.0))
+                        .size_full(),
                     )
                     .when_some(preview, |canvas, bounds| {
                         canvas.child(
@@ -255,16 +370,35 @@ impl Render for AnnotationCanvasView {
                             let Some(position) = view.pointer_to_base(event.position) else {
                                 return;
                             };
-                            view.drag_start = Some(position);
-                            view.drag_current = Some(position);
+
+                            if view.active_tool == AnnotationTool::Freehand {
+                                view.freehand_points.clear();
+                                view.freehand_points.push(position);
+                            } else {
+                                view.drag_start = Some(position);
+                                view.drag_current = Some(position);
+                            }
                             window.refresh();
                             cx.notify();
                         }),
                     )
                     .on_mouse_move(cx.listener(|view, event: &MouseMoveEvent, window, cx| {
-                        if view.drag_start.is_some()
-                            && let Some(position) = view.pointer_to_base(event.position)
-                        {
+                        let Some(position) = view.pointer_to_base(event.position) else {
+                            return;
+                        };
+
+                        if view.active_tool == AnnotationTool::Freehand {
+                            if !view.freehand_points.is_empty()
+                                && view
+                                    .freehand_points
+                                    .last()
+                                    .is_none_or(|last| distance(*last, position) >= 0.5)
+                            {
+                                view.freehand_points.push(position);
+                                window.refresh();
+                                cx.notify();
+                            }
+                        } else if view.drag_start.is_some() {
                             view.drag_current = Some(position);
                             window.refresh();
                             cx.notify();
@@ -273,14 +407,22 @@ impl Render for AnnotationCanvasView {
                     .on_mouse_up(
                         MouseButton::Left,
                         cx.listener(|view, event: &MouseUpEvent, window, cx| {
-                            let Some(position) = view.pointer_to_base(event.position) else {
+                            if view.active_tool == AnnotationTool::Freehand {
+                                if let Some(position) = view.pointer_to_base(event.position)
+                                    && view
+                                        .freehand_points
+                                        .last()
+                                        .is_none_or(|last| distance(*last, position) >= 0.5)
+                                {
+                                    view.freehand_points.push(position);
+                                }
+                                view.finish_freehand();
+                            } else if let Some(position) = view.pointer_to_base(event.position) {
+                                view.finish_drag(position);
+                            } else {
                                 view.drag_start = None;
                                 view.drag_current = None;
-                                window.refresh();
-                                cx.notify();
-                                return;
-                            };
-                            view.finish_shape(position);
+                            }
                             window.refresh();
                             cx.notify();
                         }),
@@ -316,7 +458,7 @@ fn tool_button(
         }))
 }
 
-fn render_annotation(annotation: Annotation, geometry: ImageGeometry) -> Option<gpui::Div> {
+fn render_shape_annotation(annotation: Annotation, geometry: ImageGeometry) -> Option<gpui::Div> {
     match annotation {
         Annotation::Rectangle { x, y, w, h, style } => {
             Some(styled_shape(x, y, w, h, style, geometry, false))
@@ -372,6 +514,106 @@ fn styled_shape(
     } else {
         shape
     }
+}
+
+fn paint_path_annotation(window: &mut Window, annotation: Annotation, geometry: ImageGeometry) {
+    match annotation {
+        Annotation::Line { start, end, style } => {
+            paint_line(window, start, end, &style, geometry);
+        }
+        Annotation::Arrow { start, end, style } => {
+            paint_line(window, start, end, &style, geometry);
+            paint_arrow_head(window, start, end, &style, geometry);
+        }
+        Annotation::Freehand { points, style } => {
+            paint_polyline(window, &points, &style, geometry);
+        }
+        _ => {}
+    }
+}
+
+fn paint_polyline(
+    window: &mut Window,
+    points: &[CorePoint],
+    style: &AnnotationStyle,
+    geometry: ImageGeometry,
+) {
+    if points.len() < 2 {
+        return;
+    }
+
+    let line_width = px((style.stroke_width * geometry.scale).max(1.0));
+    let mut builder = PathBuilder::stroke(line_width);
+    for (index, point_value) in points.iter().copied().enumerate() {
+        let point_value = to_canvas_point(point_value, geometry);
+        if index == 0 {
+            builder.move_to(point_value);
+        } else {
+            builder.line_to(point_value);
+        }
+    }
+
+    if let Ok(path) = builder.build() {
+        window.paint_path(
+            path,
+            parse_color(&style.stroke).unwrap_or_else(|| rgba(0xff3b30ff)),
+        );
+    }
+}
+
+fn paint_line(
+    window: &mut Window,
+    start: CorePoint,
+    end: CorePoint,
+    style: &AnnotationStyle,
+    geometry: ImageGeometry,
+) {
+    paint_polyline(window, &[start, end], style, geometry);
+}
+
+fn paint_arrow_head(
+    window: &mut Window,
+    start: CorePoint,
+    end: CorePoint,
+    style: &AnnotationStyle,
+    geometry: ImageGeometry,
+) {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length = (dx * dx + dy * dy).sqrt();
+    if length <= f32::EPSILON {
+        return;
+    }
+
+    let ux = dx / length;
+    let uy = dy / length;
+    let head_length = 14.0_f32.min(length * 0.4).max(6.0);
+    let wing = head_length * 0.55;
+    let base_x = end.x - ux * head_length;
+    let base_y = end.y - uy * head_length;
+    let left = CorePoint {
+        x: base_x - uy * wing,
+        y: base_y + ux * wing,
+    };
+    let right = CorePoint {
+        x: base_x + uy * wing,
+        y: base_y - ux * wing,
+    };
+
+    paint_polyline(window, &[left, end, right], style, geometry);
+}
+
+fn to_canvas_point(point_value: CorePoint, geometry: ImageGeometry) -> gpui::Point<gpui::Pixels> {
+    point(
+        px(geometry.origin_x + point_value.x * geometry.scale),
+        px(geometry.origin_y + point_value.y * geometry.scale),
+    )
+}
+
+fn distance(a: CorePoint, b: CorePoint) -> f32 {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    (dx * dx + dy * dy).sqrt()
 }
 
 fn parse_color(value: &str) -> Option<gpui::Rgba> {
