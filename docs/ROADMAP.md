@@ -16,7 +16,7 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] sidecar v1 model seed
 - [x] macOS compile + Clippy verification
 - [x] rustfmt clean
-- [ ] native macOS always-on-top/exclude-from-capture hooks
+- [x] native macOS always-on-top/exclude-from-capture hooks
 
 ## M1 — Tray + hotkeys + preview stack (macOS)
 - [x] tray icon and menu foundation
@@ -45,7 +45,7 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] native CoreGraphics shadow-exclusion backend for macOS 13+
 - [x] shadow policy runtime/tray wiring
 - [ ] shadow policy settings persistence
-- [ ] all-spaces/floating/excluded-from-capture behavior
+- [x] all-spaces/floating/excluded-from-capture behavior
 - [ ] click-through only while collapsed
 
 ## M3 — Annotation foundation
