@@ -1,3 +1,4 @@
+pub mod annotation_renderer;
 pub mod capture;
 pub mod editor;
 pub mod effect_compositor;
@@ -7,6 +8,7 @@ pub mod model;
 pub mod preview;
 pub mod sidecar;
 
+pub use annotation_renderer::render_annotations;
 pub use capture::{CaptureRegion, CaptureWindow, Capturer, WindowShadowPolicy, XcapCapturer};
 pub use editor::{BaseImage, EditorDocument};
 pub use effect_compositor::composite_effect_brushes;
