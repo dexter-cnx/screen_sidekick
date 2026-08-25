@@ -629,6 +629,7 @@ fn render_annotation_layer(
         Annotation::Text { x, y, text, style } => {
             Some(render_text_annotation(x, y, text, style, geometry).into_any_element())
         }
+        Annotation::BlurBrush { .. } | Annotation::PixelateBrush { .. } => None,
         annotation @ (Annotation::Line { .. }
         | Annotation::Arrow { .. }
         | Annotation::Freehand { .. }) => Some(
