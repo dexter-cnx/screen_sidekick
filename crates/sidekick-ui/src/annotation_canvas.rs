@@ -3,9 +3,7 @@ use gpui::{
     PathBuilder, Pixels, Point, Render, Window, WindowBounds, WindowOptions, canvas, div, img,
     point, prelude::*, px, rgba, size,
 };
-use sidekick_core::{
-    Annotation, AnnotationStyle, EditorDocument, MarkerStyle, Point as CorePoint,
-};
+use sidekick_core::{Annotation, AnnotationStyle, EditorDocument, MarkerStyle, Point as CorePoint};
 
 const WINDOW_WIDTH: f32 = 1100.0;
 const WINDOW_HEIGHT: f32 = 760.0;
@@ -579,7 +577,7 @@ fn render_number_marker(
     let diameter = (style.diameter * geometry.scale).max(16.0);
     let left = geometry.origin_x + x * geometry.scale - diameter / 2.0;
     let top = geometry.origin_y + y * geometry.scale - diameter / 2.0;
-    let foreground = parse_color(&style.foreground).unwrap_or_else(gpui::white);
+    let foreground = parse_color(&style.foreground).unwrap_or_else(|| rgba(0xffffffff));
     let background = parse_color(&style.background).unwrap_or_else(|| rgba(0xff3b30ff));
 
     div()
