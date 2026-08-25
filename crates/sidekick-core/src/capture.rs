@@ -243,7 +243,7 @@ fn cg_image_to_rgba(image: &CGImage) -> Result<RgbaImage, CaptureError> {
 
 #[cfg(target_os = "macos")]
 fn unpremultiply_rgba(rgba: &mut [u8]) {
-    for pixel in rgba.chunks_exact_mut(4) {
+    for pixel in rgba.as_chunks_mut::<4>().0 {
         let alpha = u32::from(pixel[3]);
         if alpha == 0 || alpha == 255 {
             continue;
