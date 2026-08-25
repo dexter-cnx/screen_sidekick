@@ -46,7 +46,7 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] shadow policy runtime/tray wiring
 - [x] shadow policy settings persistence
 - [x] all-spaces/floating/excluded-from-capture behavior
-- [ ] click-through only while collapsed
+- [x] click-through only while collapsed
 
 ## M3 — Annotation foundation
 - immutable base image
