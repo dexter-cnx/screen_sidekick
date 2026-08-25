@@ -51,10 +51,10 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 ## M3 — Annotation foundation
 - [x] immutable base image
 - [x] `.sidekick.json` versioned sidecar
-- [ ] selection/move/resize/multi-select
-- [ ] rectangle/filled rect/ellipse/line/arrow/freehand
-- [ ] text/number markers
-- [ ] undo/redo/delete
+- [x] selection/move/resize/multi-select foundation
+- [ ] rectangle/filled rect/ellipse/line/arrow/freehand UI
+- [ ] text/number markers UI
+- [x] undo/redo/delete foundation
 
 ## M4 — Advanced annotation + export
 - [ ] blur/pixelate brush
