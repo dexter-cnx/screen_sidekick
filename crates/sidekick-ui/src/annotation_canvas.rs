@@ -69,8 +69,11 @@ impl AnnotationCanvasView {
     }
 
     fn set_tool(&mut self, tool: AnnotationTool, cx: &mut Context<Self>) {
-        if self.active_tool == AnnotationTool::Text && tool != AnnotationTool::Text {
-            self.commit_text_draft(cx);
+        if self.active_tool == AnnotationTool::Text
+            && tool != AnnotationTool::Text
+            && !self.commit_text_draft(cx)
+        {
+            return;
         }
         self.active_tool = tool;
         self.drag_start = None;
@@ -169,7 +172,12 @@ impl AnnotationCanvasView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.commit_text_draft(cx);
+        if !self.commit_text_draft(cx) {
+            if let Some(input) = self.text_input.as_ref() {
+                window.focus(&input.focus_handle(cx), cx);
+            }
+            return;
+        }
         self.text_draft = Some(TextAnnotationDraft::new(position));
 
         if let Some(input) = self.text_input.as_ref().cloned() {
@@ -178,19 +186,26 @@ impl AnnotationCanvasView {
         }
     }
 
-    fn commit_text_draft(&mut self, cx: &mut Context<Self>) {
-        let Some(draft) = self.text_draft.take() else {
-            return;
-        };
+    fn commit_text_draft(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.text_draft.is_none() {
+            return true;
+        }
         let Some(input) = self.text_input.as_ref().cloned() else {
-            return;
+            return false;
         };
+        if input.read(cx).is_composing() {
+            return false;
+        }
 
         let text = input.read(cx).content().to_owned();
+        let Some(draft) = self.text_draft.take() else {
+            return true;
+        };
         if let Some(annotation) = draft.commit(text) {
             self.document.add_annotation(annotation);
         }
         input.update(cx, |input, cx| input.reset(cx));
+        true
     }
 
     fn finish_drag(&mut self, end: CorePoint) {
@@ -461,6 +476,7 @@ impl Render for AnnotationCanvasView {
                                 .absolute()
                                 .left(px(left))
                                 .top(px(top))
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                                 .child(input),
                         )
                     })
