@@ -1,4 +1,8 @@
-use std::{fs::File, io::BufWriter, path::Path};
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    path::Path,
+};
 
 use image::{ImageEncoder, RgbaImage, codecs::jpeg::JpegEncoder, codecs::png::PngEncoder};
 
@@ -48,13 +52,15 @@ pub fn save_effect_composite(
     let rendered = composite_effect_brushes(base, annotations);
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
-    encode_rgba(&rendered, format, &mut writer)
+    encode_rgba(&rendered, format, &mut writer)?;
+    writer.flush()?;
+    Ok(())
 }
 
 fn encode_rgba(
     image: &RgbaImage,
     format: ExportFormat,
-    writer: &mut impl std::io::Write,
+    writer: &mut impl Write,
 ) -> Result<(), image::ImageError> {
     let (width, height) = image.dimensions();
     match format {
@@ -65,12 +71,13 @@ fn encode_rgba(
             image::ExtendedColorType::Rgba8,
         ),
         ExportFormat::Jpeg { quality } => {
+            let rgb = image::DynamicImage::ImageRgba8(image.clone()).to_rgb8();
             let mut encoder = JpegEncoder::new_with_quality(writer, quality.clamp(1, 100));
             encoder.encode(
-                image.as_raw(),
+                rgb.as_raw(),
                 width,
                 height,
-                image::ExtendedColorType::Rgba8,
+                image::ExtendedColorType::Rgb8,
             )
         }
     }
