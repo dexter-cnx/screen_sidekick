@@ -17,7 +17,13 @@ pub fn render_annotations(base: &RgbaImage, annotations: &[Annotation]) -> RgbaI
                 draw_ellipse(&mut output, *x, *y, *w, *h, style);
             }
             Annotation::Line { start, end, style } => {
-                draw_segment(&mut output, *start, *end, style.stroke_width, parse_color(&style.stroke));
+                draw_segment(
+                    &mut output,
+                    *start,
+                    *end,
+                    style.stroke_width,
+                    parse_color(&style.stroke),
+                );
             }
             Annotation::Arrow { start, end, style } => {
                 draw_arrow(&mut output, *start, *end, style);
@@ -40,14 +46,7 @@ pub fn render_annotations(base: &RgbaImage, annotations: &[Annotation]) -> RgbaI
     output
 }
 
-fn draw_rectangle(
-    image: &mut RgbaImage,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
-    style: &AnnotationStyle,
-) {
+fn draw_rectangle(image: &mut RgbaImage, x: f32, y: f32, w: f32, h: f32, style: &AnnotationStyle) {
     let left = x.min(x + w);
     let right = x.max(x + w);
     let top = y.min(y + h);
@@ -59,7 +58,13 @@ fn draw_rectangle(
 
     let stroke = parse_color(&style.stroke);
     let width = style.stroke_width.max(1.0);
-    draw_segment(image, Point { x: left, y: top }, Point { x: right, y: top }, width, stroke);
+    draw_segment(
+        image,
+        Point { x: left, y: top },
+        Point { x: right, y: top },
+        width,
+        stroke,
+    );
     draw_segment(
         image,
         Point { x: right, y: top },
@@ -80,7 +85,13 @@ fn draw_rectangle(
         width,
         stroke,
     );
-    draw_segment(image, Point { x: left, y: bottom }, Point { x: left, y: top }, width, stroke);
+    draw_segment(
+        image,
+        Point { x: left, y: bottom },
+        Point { x: left, y: top },
+        width,
+        stroke,
+    );
 }
 
 fn fill_rect(image: &mut RgbaImage, left: f32, top: f32, right: f32, bottom: f32, color: Rgba<u8>) {
@@ -95,14 +106,7 @@ fn fill_rect(image: &mut RgbaImage, left: f32, top: f32, right: f32, bottom: f32
     }
 }
 
-fn draw_ellipse(
-    image: &mut RgbaImage,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
-    style: &AnnotationStyle,
-) {
+fn draw_ellipse(image: &mut RgbaImage, x: f32, y: f32, w: f32, h: f32, style: &AnnotationStyle) {
     let left = x.min(x + w);
     let right = x.max(x + w);
     let top = y.min(y + h);
@@ -221,7 +225,12 @@ fn draw_disk(image: &mut RgbaImage, center: Point, radius: f32, color: Rgba<u8>)
 
 fn draw_number_marker(image: &mut RgbaImage, x: f32, y: f32, number: u32, style: &MarkerStyle) {
     let radius = (style.diameter.max(4.0) * 0.5).max(2.0);
-    draw_disk(image, Point { x, y }, radius, parse_color(&style.background));
+    draw_disk(
+        image,
+        Point { x, y },
+        radius,
+        parse_color(&style.background),
+    );
 
     let text = number.to_string();
     let scale = (style.diameter / 10.0).floor().max(1.0) as u32;
@@ -263,7 +272,8 @@ fn draw_digit(
                 for sx in 0..scale {
                     let px = x + (col * scale + sx) as i32;
                     let py = y + (row as u32 * scale + sy) as i32;
-                    if px >= 0 && py >= 0 && px < image.width() as i32 && py < image.height() as i32 {
+                    if px >= 0 && py >= 0 && px < image.width() as i32 && py < image.height() as i32
+                    {
                         blend_pixel(image, px as u32, py as u32, color);
                     }
                 }
@@ -295,7 +305,8 @@ fn point_segment_distance_squared(point: Point, start: Point, end: Point) -> f32
     if length_squared <= f32::EPSILON {
         return distance_squared(point, start);
     }
-    let t = (((point.x - start.x) * dx + (point.y - start.y) * dy) / length_squared).clamp(0.0, 1.0);
+    let t =
+        (((point.x - start.x) * dx + (point.y - start.y) * dy) / length_squared).clamp(0.0, 1.0);
     let closest = Point {
         x: start.x + t * dx,
         y: start.y + t * dy,
