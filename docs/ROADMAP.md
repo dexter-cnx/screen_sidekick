@@ -49,65 +49,65 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] click-through only while collapsed
 
 ## M3 — Annotation foundation
-- immutable base image
-- `.sidekick.json` versioned sidecar
-- selection/move/resize/multi-select
-- rectangle/filled rect/ellipse/line/arrow/freehand
-- text/number markers
-- undo/redo/delete
+- [ ] immutable base image
+- [x] `.sidekick.json` versioned sidecar
+- [ ] selection/move/resize/multi-select
+- [ ] rectangle/filled rect/ellipse/line/arrow/freehand
+- [ ] text/number markers
+- [ ] undo/redo/delete
 
 ## M4 — Advanced annotation + export
-- blur/pixelate brush
-- highlight dimmer
-- PNG/JPEG export
-- JPEG quality slider
-- clipboard render
-- Quick Save
+- [ ] blur/pixelate brush
+- [ ] highlight dimmer
+- [ ] PNG/JPEG export
+- [ ] JPEG quality slider
+- [ ] clipboard render
+- [ ] Quick Save
 
 ## M5 — History + settings
-- thumbnail grid
-- date search/filter
-- reveal in Finder
-- retention/delete
-- General/Screenshots/Hotkeys/Overlay settings
-- launch at startup
+- [ ] thumbnail grid
+- [ ] date search/filter
+- [ ] reveal in Finder
+- [ ] retention/delete
+- [ ] General/Screenshots/Hotkeys/Overlay settings
+- [ ] launch at startup
 
 ## M6 — macOS productization
-- app icon and macOS metadata
-- signed/notarized macOS app
-- Homebrew cask
-- release CI
-- real-device/workflow stabilization
+- [ ] app icon and macOS metadata
+- [ ] signed/notarized macOS app
+- [ ] Homebrew cask
+- [ ] release CI
+- [ ] real-device/workflow stabilization
 
 ## Platform Phase — Windows 10/11
 Begin only after the macOS product path is stable.
 
-- enable Windows CI
-- validate/build GPUI Windows backend against the pinned revision
-- xcap DXGI/WGC capture implementation and behavior validation
-- native topmost/layered/tool-window/excluded-from-capture hooks via `windows-rs`
-- Explorer integration/history reveal behavior
-- launch-at-startup implementation
-- Windows packaging/signing
-- Scoop manifest
-- platform parity test matrix
+- [ ] enable Windows CI
+- [ ] validate/build GPUI Windows backend against the pinned revision
+- [ ] xcap DXGI/WGC capture implementation and behavior validation
+- [ ] native topmost/layered/tool-window/excluded-from-capture hooks via `windows-rs`
+- [ ] Explorer integration/history reveal behavior
+- [ ] launch-at-startup implementation
+- [ ] Windows packaging/signing
+- [ ] Scoop manifest
+- [ ] platform parity test matrix
 
 Windows work must reuse the existing core/domain contracts rather than introducing Windows behavior into `sidekick-core`.
 
 ## Phase 2 — Window Sidekick (macOS first)
-- snap active window: halves, quarters, thirds, maximize, center
-- customizable global hotkeys
-- multi-monitor movement and layout awareness
-- macOS implementation via Accessibility APIs
-- custom window layouts
-- drag-to-snap layout overlay
+- [ ] snap active window: halves, quarters, thirds, maximize, center
+- [ ] customizable global hotkeys
+- [ ] multi-monitor movement and layout awareness
+- [ ] macOS implementation via Accessibility APIs
+- [ ] custom window layouts
+- [ ] drag-to-snap layout overlay
 
 After the macOS Window Sidekick implementation is stable, add a Windows implementation via Win32 / `windows-rs` behind the same `WindowManager` boundary.
 
 ## Phase 2.5 — Workspace Presets
-- save and restore multi-window layouts
-- per-app placement rules
-- named presets such as Coding / Meeting / Presentation
-- optional capture-after-arrange workflow
+- [ ] save and restore multi-window layouts
+- [ ] per-app placement rules
+- [ ] named presets such as Coding / Meeting / Presentation
+- [ ] optional capture-after-arrange workflow
 
 Window management stays outside the MVP screenshot path and behind a platform-neutral `WindowManager` boundary so it cannot couple capture or annotation logic to OS APIs.
