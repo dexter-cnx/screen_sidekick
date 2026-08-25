@@ -25,10 +25,22 @@ fn apply_blur_brush(image: &mut RgbaImage, points: &[Point], style: &EffectBrush
         return;
     }
 
-    let source = image.clone();
+    let Some(mask) = BrushMask::rasterize(points, style.radius, image.width(), image.height()) else {
+        return;
+    };
     let sigma = (style.radius * style.strength * 0.35).max(0.5);
+    let kernel_padding = (sigma * 3.0).ceil() as u32;
+    let source_bounds = mask.bounds.expanded(kernel_padding, image.width(), image.height());
+    let source = image::imageops::crop_imm(
+        image,
+        source_bounds.x,
+        source_bounds.y,
+        source_bounds.width,
+        source_bounds.height,
+    )
+    .to_image();
     let blurred = image::imageops::blur(&source, sigma);
-    apply_masked_pixels(image, &blurred, points, style.radius);
+    apply_masked_roi(image, &blurred, source_bounds, &mask);
 }
 
 fn apply_pixelate_brush(image: &mut RgbaImage, points: &[Point], style: &EffectBrushStyle) {
@@ -36,47 +48,188 @@ fn apply_pixelate_brush(image: &mut RgbaImage, points: &[Point], style: &EffectB
         return;
     }
 
-    let source = image.clone();
+    let Some(mask) = BrushMask::rasterize(points, style.radius, image.width(), image.height()) else {
+        return;
+    };
     let block_size = (2.0 + style.strength * style.radius * 0.5)
         .round()
         .clamp(2.0, 64.0) as u32;
+    let source_bounds = mask
+        .bounds
+        .expanded(block_size, image.width(), image.height());
+    let source = image::imageops::crop_imm(
+        image,
+        source_bounds.x,
+        source_bounds.y,
+        source_bounds.width,
+        source_bounds.height,
+    )
+    .to_image();
     let pixelated = pixelate(&source, block_size);
-    apply_masked_pixels(image, &pixelated, points, style.radius);
+    apply_masked_roi(image, &pixelated, source_bounds, &mask);
 }
 
-fn apply_masked_pixels(
-    destination: &mut RgbaImage,
-    effect: &RgbaImage,
-    points: &[Point],
-    radius: f32,
-) {
-    if destination.dimensions() != effect.dimensions() || points.is_empty() {
-        return;
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PixelBounds {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
 
-    let radius = radius.max(1.0);
-    let (width, height) = destination.dimensions();
-    for y in 0..height {
-        for x in 0..width {
-            let sample = Point {
-                x: x as f32 + 0.5,
-                y: y as f32 + 0.5,
-            };
-            if point_is_inside_brush(sample, points, radius) {
-                destination.put_pixel(x, y, *effect.get_pixel(x, y));
-            }
+impl PixelBounds {
+    fn expanded(self, padding: u32, image_width: u32, image_height: u32) -> Self {
+        let x = self.x.saturating_sub(padding);
+        let y = self.y.saturating_sub(padding);
+        let right = self
+            .x
+            .saturating_add(self.width)
+            .saturating_add(padding)
+            .min(image_width);
+        let bottom = self
+            .y
+            .saturating_add(self.height)
+            .saturating_add(padding)
+            .min(image_height);
+        Self {
+            x,
+            y,
+            width: right.saturating_sub(x),
+            height: bottom.saturating_sub(y),
         }
     }
 }
 
-fn point_is_inside_brush(sample: Point, points: &[Point], radius: f32) -> bool {
-    if points.len() == 1 {
-        return distance_squared(sample, points[0]) <= radius * radius;
+#[derive(Debug, Clone)]
+struct BrushMask {
+    bounds: PixelBounds,
+    pixels: Vec<bool>,
+}
+
+impl BrushMask {
+    fn rasterize(
+        points: &[Point],
+        radius: f32,
+        image_width: u32,
+        image_height: u32,
+    ) -> Option<Self> {
+        if points.is_empty() || image_width == 0 || image_height == 0 {
+            return None;
+        }
+
+        let radius = radius.max(1.0);
+        let min_x = points
+            .iter()
+            .map(|point| point.x - radius)
+            .fold(f32::INFINITY, f32::min)
+            .floor()
+            .max(0.0) as u32;
+        let min_y = points
+            .iter()
+            .map(|point| point.y - radius)
+            .fold(f32::INFINITY, f32::min)
+            .floor()
+            .max(0.0) as u32;
+        let max_x = points
+            .iter()
+            .map(|point| point.x + radius)
+            .fold(f32::NEG_INFINITY, f32::max)
+            .ceil()
+            .max(0.0) as u32;
+        let max_y = points
+            .iter()
+            .map(|point| point.y + radius)
+            .fold(f32::NEG_INFINITY, f32::max)
+            .ceil()
+            .max(0.0) as u32;
+
+        let right = max_x.min(image_width);
+        let bottom = max_y.min(image_height);
+        if min_x >= right || min_y >= bottom {
+            return None;
+        }
+
+        let bounds = PixelBounds {
+            x: min_x,
+            y: min_y,
+            width: right - min_x,
+            height: bottom - min_y,
+        };
+        let mut mask = Self {
+            bounds,
+            pixels: vec![false; bounds.width as usize * bounds.height as usize],
+        };
+
+        if points.len() == 1 {
+            mask.rasterize_segment(points[0], points[0], radius);
+        } else {
+            for segment in points.windows(2) {
+                mask.rasterize_segment(segment[0], segment[1], radius);
+            }
+        }
+        Some(mask)
     }
 
-    points
-        .windows(2)
-        .any(|segment| point_segment_distance_squared(sample, segment[0], segment[1]) <= radius * radius)
+    fn rasterize_segment(&mut self, start: Point, end: Point, radius: f32) {
+        let radius_squared = radius * radius;
+        let min_x = ((start.x.min(end.x) - radius).floor().max(self.bounds.x as f32) as u32)
+            .max(self.bounds.x);
+        let min_y = ((start.y.min(end.y) - radius).floor().max(self.bounds.y as f32) as u32)
+            .max(self.bounds.y);
+        let max_x = ((start.x.max(end.x) + radius).ceil() as u32)
+            .min(self.bounds.x + self.bounds.width);
+        let max_y = ((start.y.max(end.y) + radius).ceil() as u32)
+            .min(self.bounds.y + self.bounds.height);
+
+        for y in min_y..max_y {
+            for x in min_x..max_x {
+                let sample = Point {
+                    x: x as f32 + 0.5,
+                    y: y as f32 + 0.5,
+                };
+                if point_segment_distance_squared(sample, start, end) <= radius_squared {
+                    let local_x = x - self.bounds.x;
+                    let local_y = y - self.bounds.y;
+                    let index = local_y as usize * self.bounds.width as usize + local_x as usize;
+                    self.pixels[index] = true;
+                }
+            }
+        }
+    }
+
+    fn contains(&self, x: u32, y: u32) -> bool {
+        if x < self.bounds.x
+            || y < self.bounds.y
+            || x >= self.bounds.x + self.bounds.width
+            || y >= self.bounds.y + self.bounds.height
+        {
+            return false;
+        }
+        let local_x = x - self.bounds.x;
+        let local_y = y - self.bounds.y;
+        self.pixels[local_y as usize * self.bounds.width as usize + local_x as usize]
+    }
+}
+
+fn apply_masked_roi(
+    destination: &mut RgbaImage,
+    effect: &RgbaImage,
+    effect_bounds: PixelBounds,
+    mask: &BrushMask,
+) {
+    if effect.dimensions() != (effect_bounds.width, effect_bounds.height) {
+        return;
+    }
+
+    for y in mask.bounds.y..mask.bounds.y + mask.bounds.height {
+        for x in mask.bounds.x..mask.bounds.x + mask.bounds.width {
+            if mask.contains(x, y) {
+                let effect_x = x - effect_bounds.x;
+                let effect_y = y - effect_bounds.y;
+                destination.put_pixel(x, y, *effect.get_pixel(effect_x, effect_y));
+            }
+        }
+    }
 }
 
 fn point_segment_distance_squared(point: Point, start: Point, end: Point) -> f32 {
@@ -212,7 +365,22 @@ mod tests {
     #[test]
     fn brush_mask_covers_segment_between_sampled_points() {
         let points = [Point { x: 2.0, y: 2.0 }, Point { x: 8.0, y: 2.0 }];
-        assert!(point_is_inside_brush(Point { x: 5.0, y: 2.5 }, &points, 1.0));
-        assert!(!point_is_inside_brush(Point { x: 5.0, y: 4.0 }, &points, 1.0));
+        let mask = BrushMask::rasterize(&points, 1.0, 20, 20).expect("mask");
+
+        assert!(mask.contains(5, 2));
+        assert!(!mask.contains(5, 4));
+    }
+
+    #[test]
+    fn brush_mask_uses_compact_stroke_bounds() {
+        let points = [Point { x: 100.0, y: 80.0 }, Point { x: 120.0, y: 90.0 }];
+        let mask = BrushMask::rasterize(&points, 4.0, 3840, 2160).expect("mask");
+
+        assert!(mask.bounds.width <= 28);
+        assert!(mask.bounds.height <= 18);
+        assert_eq!(
+            mask.pixels.len(),
+            mask.bounds.width as usize * mask.bounds.height as usize
+        );
     }
 }
