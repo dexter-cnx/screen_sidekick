@@ -322,46 +322,67 @@ fn distance_squared(a: Point, b: Point) -> f32 {
 
 fn parse_color(value: &str) -> Rgba<u8> {
     let hex = value.strip_prefix('#').unwrap_or(value);
-    match hex.len() {
-        6 => Rgba([
-            parse_byte(&hex[0..2]),
-            parse_byte(&hex[2..4]),
-            parse_byte(&hex[4..6]),
-            255,
-        ]),
-        8 => Rgba([
-            parse_byte(&hex[2..4]),
-            parse_byte(&hex[4..6]),
-            parse_byte(&hex[6..8]),
-            parse_byte(&hex[0..2]),
-        ]),
-        _ => Rgba([255, 255, 255, 255]),
+    let bytes = hex.as_bytes();
+    if !matches!(bytes.len(), 6 | 8) || !bytes.iter().all(u8::is_ascii_hexdigit) {
+        return Rgba([255, 255, 255, 255]);
     }
+
+    let red = parse_hex_byte(bytes[0], bytes[1]);
+    let green = parse_hex_byte(bytes[2], bytes[3]);
+    let blue = parse_hex_byte(bytes[4], bytes[5]);
+    let alpha = if bytes.len() == 8 {
+        parse_hex_byte(bytes[6], bytes[7])
+    } else {
+        255
+    };
+    Rgba([red, green, blue, alpha])
 }
 
-fn parse_byte(value: &str) -> u8 {
-    u8::from_str_radix(value, 16).unwrap_or(255)
+fn parse_hex_byte(high: u8, low: u8) -> u8 {
+    (hex_nibble(high) << 4) | hex_nibble(low)
+}
+
+fn hex_nibble(value: u8) -> u8 {
+    match value {
+        b'0'..=b'9' => value - b'0',
+        b'a'..=b'f' => value - b'a' + 10,
+        b'A'..=b'F' => value - b'A' + 10,
+        _ => 0,
+    }
 }
 
 fn blend_pixel(image: &mut RgbaImage, x: u32, y: u32, source: Rgba<u8>) {
-    let alpha = source[3] as f32 / 255.0;
-    if alpha <= 0.0 {
+    let source_alpha = source[3] as f32 / 255.0;
+    if source_alpha <= 0.0 {
         return;
     }
-    if alpha >= 1.0 {
+    if source_alpha >= 1.0 {
         image.put_pixel(x, y, source);
         return;
     }
+
     let destination = *image.get_pixel(x, y);
-    let inverse = 1.0 - alpha;
+    let destination_alpha = destination[3] as f32 / 255.0;
+    let output_alpha = source_alpha + destination_alpha * (1.0 - source_alpha);
+    if output_alpha <= f32::EPSILON {
+        image.put_pixel(x, y, Rgba([0, 0, 0, 0]));
+        return;
+    }
+
+    let blend_channel = |source_channel: u8, destination_channel: u8| {
+        ((source_channel as f32 * source_alpha
+            + destination_channel as f32 * destination_alpha * (1.0 - source_alpha))
+            / output_alpha)
+            .round() as u8
+    };
     image.put_pixel(
         x,
         y,
         Rgba([
-            (source[0] as f32 * alpha + destination[0] as f32 * inverse).round() as u8,
-            (source[1] as f32 * alpha + destination[1] as f32 * inverse).round() as u8,
-            (source[2] as f32 * alpha + destination[2] as f32 * inverse).round() as u8,
-            255,
+            blend_channel(source[0], destination[0]),
+            blend_channel(source[1], destination[1]),
+            blend_channel(source[2], destination[2]),
+            (output_alpha * 255.0).round() as u8,
         ]),
     );
 }
@@ -375,7 +396,7 @@ mod tests {
         AnnotationStyle {
             stroke: "#ff0000".to_owned(),
             stroke_width: 2.0,
-            fill: Some("#8000ff00".to_owned()),
+            fill: Some("#00ff0080".to_owned()),
         }
     }
 
@@ -449,7 +470,26 @@ mod tests {
     }
 
     #[test]
-    fn eight_digit_colors_use_argb_order() {
-        assert_eq!(parse_color("#80010203"), Rgba([1, 2, 3, 128]));
+    fn eight_digit_colors_use_rgba_order() {
+        assert_eq!(parse_color("#01020380"), Rgba([1, 2, 3, 128]));
+    }
+
+    #[test]
+    fn malformed_utf8_color_falls_back_without_panicking() {
+        assert_eq!(parse_color("#aéaaa"), Rgba([255, 255, 255, 255]));
+    }
+
+    #[test]
+    fn source_over_preserves_transparent_destination_alpha() {
+        let mut image = RgbaImage::from_pixel(1, 1, Rgba([10, 20, 30, 0]));
+        blend_pixel(&mut image, 0, 0, Rgba([200, 100, 50, 128]));
+        assert_eq!(image.get_pixel(0, 0), &Rgba([200, 100, 50, 128]));
+    }
+
+    #[test]
+    fn source_over_combines_partial_alpha() {
+        let mut image = RgbaImage::from_pixel(1, 1, Rgba([0, 0, 255, 128]));
+        blend_pixel(&mut image, 0, 0, Rgba([255, 0, 0, 128]));
+        assert_eq!(image.get_pixel(0, 0)[3], 192);
     }
 }
