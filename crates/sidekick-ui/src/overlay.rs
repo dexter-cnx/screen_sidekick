@@ -32,7 +32,7 @@ impl OverlayCard {
 
 impl Render for OverlayCard {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        apply_overlay_window_behavior(window);
+        apply_overlay_window_behavior(window, false);
 
         let image_path = self.capture.path.clone();
         let copy_path = image_path.clone();
@@ -179,7 +179,7 @@ impl PeekTab {
 
 impl Render for PeekTab {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        apply_overlay_window_behavior(window);
+        apply_overlay_window_behavior(window, true);
 
         let activate_sender = self.activate_sender.clone();
         div()
@@ -195,7 +195,6 @@ impl Render for PeekTab {
             .shadow_lg()
             .text_color(rgb(0xe8e5ef))
             .text_xs()
-            .cursor_pointer()
             .child(format!("Screens · {}", self.stack_size))
             .on_click(move |_, window, _cx| {
                 let _ = activate_sender.send(());
