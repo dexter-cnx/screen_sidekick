@@ -59,6 +59,22 @@ impl HotkeyBinding {
         }
     }
 
+    pub const fn window_default() -> Self {
+        Self {
+            action: HotkeyAction::CaptureWindow,
+            modifiers: HotkeyModifiers::option(),
+            key: HotkeyKey::Character('2'),
+        }
+    }
+
+    pub const fn area_default() -> Self {
+        Self {
+            action: HotkeyAction::CaptureArea,
+            modifiers: HotkeyModifiers::option(),
+            key: HotkeyKey::Character('3'),
+        }
+    }
+
     pub fn validate(self) -> Result<(), HotkeyValidationError> {
         if !self.modifiers.has_any() {
             return Err(HotkeyValidationError::MissingModifier);
@@ -103,6 +119,37 @@ mod tests {
         assert_eq!(binding.modifiers, HotkeyModifiers::option());
         assert_eq!(binding.key, HotkeyKey::Character('1'));
         assert_eq!(binding.validate(), Ok(()));
+    }
+
+    #[test]
+    fn window_default_matches_option_two() {
+        let binding = HotkeyBinding::window_default();
+
+        assert_eq!(binding.action, HotkeyAction::CaptureWindow);
+        assert_eq!(binding.modifiers, HotkeyModifiers::option());
+        assert_eq!(binding.key, HotkeyKey::Character('2'));
+        assert_eq!(binding.validate(), Ok(()));
+    }
+
+    #[test]
+    fn area_default_matches_option_three() {
+        let binding = HotkeyBinding::area_default();
+
+        assert_eq!(binding.action, HotkeyAction::CaptureArea);
+        assert_eq!(binding.modifiers, HotkeyModifiers::option());
+        assert_eq!(binding.key, HotkeyKey::Character('3'));
+        assert_eq!(binding.validate(), Ok(()));
+    }
+
+    #[test]
+    fn default_bindings_do_not_conflict() {
+        let fullscreen = HotkeyBinding::fullscreen_default();
+        let window = HotkeyBinding::window_default();
+        let area = HotkeyBinding::area_default();
+
+        assert!(!fullscreen.conflicts_with(window));
+        assert!(!fullscreen.conflicts_with(area));
+        assert!(!window.conflicts_with(area));
     }
 
     #[test]

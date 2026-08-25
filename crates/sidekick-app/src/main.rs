@@ -1,6 +1,8 @@
+mod capture_hotkeys;
 mod preferences;
 mod runtime;
 
+use capture_hotkeys::CaptureHotkeys;
 use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
 use gpui::{App, AsyncApp, WindowHandle, prelude::*};
 use gpui_platform::application;
@@ -94,9 +96,32 @@ fn show_peek_window(
     *peek_window = Some(handle);
 }
 
+fn open_area_selector(
+    cx: &mut AsyncApp,
+    area_sender: &mpsc::Sender<CaptureRegion>,
+    area_selector_window: &mut Option<WindowHandle<AreaSelectorView>>,
+) {
+    if let Some(handle) = area_selector_window.take() {
+        cx.update(|cx| {
+            let _ = handle.update(cx, |_, window, _| window.remove_window());
+        });
+    }
+    let area_sender = area_sender.clone();
+    let handle = cx.update(|cx| {
+        cx.open_window(area_selector_window_options(cx), move |_, cx| {
+            cx.new(|_| AreaSelectorView::new(area_sender))
+        })
+        .expect("failed to open Screen Sidekick area selector")
+    });
+    *area_selector_window = Some(handle);
+}
+
 fn main() -> anyhow::Result<()> {
     application().run(|cx: &mut App| {
         let mut runtime = AppRuntime::new().expect("failed to initialize tray/hotkey runtime");
+        let capture_hotkeys = CaptureHotkeys::new();
+        let window_hotkey_id = capture_hotkeys.window_hotkey_id();
+        let area_hotkey_id = capture_hotkeys.area_hotkey_id();
         runtime.set_window_shadow_policy(preferences::load_window_shadow_policy());
         let capture_menu_id = runtime.capture_menu_id().clone();
         let capture_window_menu_id = runtime.capture_window_menu_id().clone();
@@ -111,6 +136,7 @@ fn main() -> anyhow::Result<()> {
         let quit_menu_id = runtime.quit_menu_id().clone();
 
         cx.spawn(async move |cx| {
+            let _capture_hotkeys = capture_hotkeys;
             let mut runtime = runtime;
             let mut preview_stack = PreviewStack::default();
             let mut preview_visibility = PreviewVisibilityState::default();
@@ -251,19 +277,7 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                     if event.id == capture_area_menu_id {
-                        if let Some(handle) = area_selector_window.take() {
-                            cx.update(|cx| {
-                                let _ = handle.update(cx, |_, window, _| window.remove_window());
-                            });
-                        }
-                        let area_sender = area_sender.clone();
-                        let handle = cx.update(|cx| {
-                            cx.open_window(area_selector_window_options(cx), move |_, cx| {
-                                cx.new(|_| AreaSelectorView::new(area_sender))
-                            })
-                            .expect("failed to open Screen Sidekick area selector")
-                        });
-                        area_selector_window = Some(handle);
+                        open_area_selector(cx, &area_sender, &mut area_selector_window);
                     }
                     if event.id == settings_menu_id {
                         if let Some(handle) = settings_window.take() {
@@ -286,10 +300,15 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
-                    if event.id == runtime.fullscreen_hotkey_id()
-                        && event.state == HotKeyState::Pressed
-                    {
+                    if event.state != HotKeyState::Pressed {
+                        continue;
+                    }
+                    if event.id == runtime.fullscreen_hotkey_id() {
                         capture_request = Some(CaptureRequest::Fullscreen);
+                    } else if Some(event.id) == window_hotkey_id {
+                        capture_request = Some(CaptureRequest::FocusedWindow);
+                    } else if Some(event.id) == area_hotkey_id {
+                        open_area_selector(cx, &area_sender, &mut area_selector_window);
                     }
                 }
 
