@@ -10,9 +10,11 @@ fn apply_macos_overlay_window_behavior(window: &Window) {
     use objc2_app_kit::{
         NSFloatingWindowLevel, NSView, NSWindowCollectionBehavior, NSWindowSharingType,
     };
-    use raw_window_handle::RawWindowHandle;
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-    let handle = window.window_handle();
+    let Ok(handle) = HasWindowHandle::window_handle(window) else {
+        return;
+    };
     let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
         return;
     };
