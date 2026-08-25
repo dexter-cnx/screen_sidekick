@@ -53,7 +53,8 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] `.sidekick.json` versioned sidecar
 - [x] selection/move/resize/multi-select foundation
 - [x] rectangle/filled rect/ellipse/line/arrow/freehand UI
-- [ ] text/number markers UI
+- [x] number marker UI
+- [ ] text UI
 - [x] undo/redo/delete foundation
 
 ## M4 — Advanced annotation + export
