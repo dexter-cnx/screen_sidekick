@@ -58,6 +58,14 @@ pub enum Annotation {
         number: u32,
         style: MarkerStyle,
     },
+    BlurBrush {
+        points: Vec<Point>,
+        style: EffectBrushStyle,
+    },
+    PixelateBrush {
+        points: Vec<Point>,
+        style: EffectBrushStyle,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -79,6 +87,21 @@ pub struct MarkerStyle {
     pub foreground: String,
     pub background: String,
     pub diameter: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EffectBrushStyle {
+    pub radius: f32,
+    pub strength: f32,
+}
+
+impl EffectBrushStyle {
+    pub fn new(radius: f32, strength: f32) -> Self {
+        Self {
+            radius: radius.max(1.0),
+            strength: strength.clamp(0.0, 1.0),
+        }
+    }
 }
 
 impl SidecarDocument {
@@ -207,5 +230,42 @@ mod tests {
         let decoded: SidecarDocument = serde_json::from_str(&json).unwrap();
 
         assert_eq!(decoded, document);
+    }
+
+    #[test]
+    fn m4_effect_brush_annotations_round_trip() {
+        let mut document = SidecarDocument::empty("sha256:base");
+        let points = vec![Point { x: 4.0, y: 8.0 }, Point { x: 12.0, y: 16.0 }];
+        document.push(Annotation::BlurBrush {
+            points: points.clone(),
+            style: EffectBrushStyle::new(18.0, 0.65),
+        });
+        document.push(Annotation::PixelateBrush {
+            points,
+            style: EffectBrushStyle::new(24.0, 0.8),
+        });
+
+        let json = serde_json::to_string(&document).unwrap();
+        let decoded: SidecarDocument = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(decoded, document);
+    }
+
+    #[test]
+    fn effect_brush_style_normalizes_radius_and_strength() {
+        assert_eq!(
+            EffectBrushStyle::new(0.0, 2.0),
+            EffectBrushStyle {
+                radius: 1.0,
+                strength: 1.0,
+            }
+        );
+        assert_eq!(
+            EffectBrushStyle::new(12.0, -1.0),
+            EffectBrushStyle {
+                radius: 12.0,
+                strength: 0.0,
+            }
+        );
     }
 }
