@@ -8,3 +8,6 @@ pub use capture::{CaptureRegion, CaptureWindow, Capturer, WindowShadowPolicy, Xc
 pub use hotkey::{HotkeyAction, HotkeyBinding, HotkeyKey, HotkeyModifiers, HotkeyValidationError};
 pub use model::{CaptureFrame, CaptureMode, CaptureOptions, SavedCapture};
 pub use preview::{DEFAULT_PREVIEW_LIMIT, PreviewStack, PreviewVisibility, PreviewVisibilityState};
+pub use sidecar::{
+    Annotation, AnnotationStyle, MarkerStyle, Point, SIDECAR_VERSION, SidecarDocument, TextStyle,
+};
