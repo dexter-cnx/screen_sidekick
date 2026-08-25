@@ -41,8 +41,8 @@ impl CaptureHotkeys {
 }
 
 fn runtime_hotkey(binding: HotkeyBinding) -> Result<HotKey> {
-    use global_hotkey::hotkey::{Code, Modifiers};
-    use sidekick_core::{HotkeyKey, HotkeyModifiers};
+    use global_hotkey::hotkey::Code;
+    use sidekick_core::HotkeyKey;
 
     binding
         .validate()
