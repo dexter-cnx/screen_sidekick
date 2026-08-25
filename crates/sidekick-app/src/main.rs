@@ -119,7 +119,7 @@ fn open_area_selector(
 fn main() -> anyhow::Result<()> {
     application().run(|cx: &mut App| {
         let mut runtime = AppRuntime::new().expect("failed to initialize tray/hotkey runtime");
-        let capture_hotkeys = CaptureHotkeys::new().expect("failed to initialize window/area hotkeys");
+        let capture_hotkeys = CaptureHotkeys::new();
         let window_hotkey_id = capture_hotkeys.window_hotkey_id();
         let area_hotkey_id = capture_hotkeys.area_hotkey_id();
         runtime.set_window_shadow_policy(preferences::load_window_shadow_policy());
@@ -305,9 +305,9 @@ fn main() -> anyhow::Result<()> {
                     }
                     if event.id == runtime.fullscreen_hotkey_id() {
                         capture_request = Some(CaptureRequest::Fullscreen);
-                    } else if event.id == window_hotkey_id {
+                    } else if Some(event.id) == window_hotkey_id {
                         capture_request = Some(CaptureRequest::FocusedWindow);
-                    } else if event.id == area_hotkey_id {
+                    } else if Some(event.id) == area_hotkey_id {
                         open_area_selector(cx, &area_sender, &mut area_selector_window);
                     }
                 }
