@@ -3,7 +3,9 @@ use gpui::{
     PathBuilder, Pixels, Point, Render, Window, WindowBounds, WindowOptions, canvas, div, img,
     point, prelude::*, px, rgba, size,
 };
-use sidekick_core::{Annotation, AnnotationStyle, EditorDocument, Point as CorePoint};
+use sidekick_core::{
+    Annotation, AnnotationStyle, EditorDocument, MarkerStyle, Point as CorePoint,
+};
 
 const WINDOW_WIDTH: f32 = 1100.0;
 const WINDOW_HEIGHT: f32 = 760.0;
@@ -20,6 +22,7 @@ pub enum AnnotationTool {
     Line,
     Arrow,
     Freehand,
+    NumberMarker,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -103,7 +106,10 @@ impl AnnotationCanvasView {
     fn drag_bounds(&self, geometry: ImageGeometry) -> Option<Bounds<Pixels>> {
         if matches!(
             self.active_tool,
-            AnnotationTool::Line | AnnotationTool::Arrow | AnnotationTool::Freehand
+            AnnotationTool::Line
+                | AnnotationTool::Arrow
+                | AnnotationTool::Freehand
+                | AnnotationTool::NumberMarker
         ) {
             return None;
         }
@@ -126,6 +132,24 @@ impl AnnotationCanvasView {
             stroke_width: 3.0,
             fill: None,
         }
+    }
+
+    fn marker_style() -> MarkerStyle {
+        MarkerStyle {
+            foreground: "#ffffffff".to_owned(),
+            background: "#ff3b30ff".to_owned(),
+            diameter: 28.0,
+        }
+    }
+
+    fn add_number_marker(&mut self, position: CorePoint) {
+        let number = next_marker_number(self.document.annotations());
+        self.document.add_annotation(Annotation::NumberMarker {
+            x: position.x,
+            y: position.y,
+            number,
+            style: Self::marker_style(),
+        });
     }
 
     fn finish_drag(&mut self, end: CorePoint) {
@@ -179,7 +203,9 @@ impl AnnotationCanvasView {
                     style: Self::outline_style(),
                 })
             }
-            AnnotationTool::Select | AnnotationTool::Freehand => None,
+            AnnotationTool::Select | AnnotationTool::Freehand | AnnotationTool::NumberMarker => {
+                None
+            }
         };
 
         if let Some(annotation) = annotation {
@@ -267,6 +293,12 @@ impl Render for AnnotationCanvasView {
                     .child(tool_button(
                         "Freehand",
                         AnnotationTool::Freehand,
+                        self.active_tool,
+                        cx,
+                    ))
+                    .child(tool_button(
+                        "Marker",
+                        AnnotationTool::NumberMarker,
                         self.active_tool,
                         cx,
                     )),
@@ -377,12 +409,18 @@ impl Render for AnnotationCanvasView {
                                 return;
                             };
 
-                            if view.active_tool == AnnotationTool::Freehand {
-                                view.freehand_points.clear();
-                                view.freehand_points.push(position);
-                            } else {
-                                view.drag_start = Some(position);
-                                view.drag_current = Some(position);
+                            match view.active_tool {
+                                AnnotationTool::Freehand => {
+                                    view.freehand_points.clear();
+                                    view.freehand_points.push(position);
+                                }
+                                AnnotationTool::NumberMarker => {
+                                    view.add_number_marker(position);
+                                }
+                                _ => {
+                                    view.drag_start = Some(position);
+                                    view.drag_current = Some(position);
+                                }
                             }
                             window.refresh();
                             cx.notify();
@@ -413,6 +451,9 @@ impl Render for AnnotationCanvasView {
                     .on_mouse_up(
                         MouseButton::Left,
                         cx.listener(|view, event: &MouseUpEvent, window, cx| {
+                            if view.active_tool == AnnotationTool::NumberMarker {
+                                return;
+                            }
                             if view.active_tool == AnnotationTool::Freehand {
                                 if let Some(position) = view.pointer_to_base(event.position)
                                     && view
@@ -472,6 +513,12 @@ fn render_shape_annotation(annotation: Annotation, geometry: ImageGeometry) -> O
         Annotation::Ellipse { x, y, w, h, style } => {
             Some(styled_shape(x, y, w, h, style, geometry, true))
         }
+        Annotation::NumberMarker {
+            x,
+            y,
+            number,
+            style,
+        } => Some(render_number_marker(x, y, number, style, geometry)),
         _ => None,
     }
 }
@@ -520,6 +567,47 @@ fn styled_shape(
     } else {
         shape
     }
+}
+
+fn render_number_marker(
+    x: f32,
+    y: f32,
+    number: u32,
+    style: MarkerStyle,
+    geometry: ImageGeometry,
+) -> gpui::Div {
+    let diameter = (style.diameter * geometry.scale).max(16.0);
+    let left = geometry.origin_x + x * geometry.scale - diameter / 2.0;
+    let top = geometry.origin_y + y * geometry.scale - diameter / 2.0;
+    let foreground = parse_color(&style.foreground).unwrap_or_else(gpui::white);
+    let background = parse_color(&style.background).unwrap_or_else(|| rgba(0xff3b30ff));
+
+    div()
+        .absolute()
+        .left(px(left))
+        .top(px(top))
+        .w(px(diameter))
+        .h(px(diameter))
+        .rounded(px(diameter / 2.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .bg(background)
+        .text_color(foreground)
+        .text_size(px((diameter * 0.52).max(11.0)))
+        .child(number.to_string())
+}
+
+fn next_marker_number(annotations: &[Annotation]) -> u32 {
+    annotations
+        .iter()
+        .filter_map(|annotation| match annotation {
+            Annotation::NumberMarker { number, .. } => Some(*number),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0)
+        .saturating_add(1)
 }
 
 fn paint_path_annotation(
@@ -655,5 +743,38 @@ pub fn annotation_window_options(cx: &App) -> WindowOptions {
         show: true,
         is_resizable: false,
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn marker_numbers_continue_after_highest_existing_marker() {
+        let annotations = vec![
+            Annotation::NumberMarker {
+                x: 1.0,
+                y: 2.0,
+                number: 2,
+                style: AnnotationCanvasView::marker_style(),
+            },
+            Annotation::Rectangle {
+                x: 0.0,
+                y: 0.0,
+                w: 10.0,
+                h: 10.0,
+                style: AnnotationCanvasView::outline_style(),
+            },
+            Annotation::NumberMarker {
+                x: 3.0,
+                y: 4.0,
+                number: 7,
+                style: AnnotationCanvasView::marker_style(),
+            },
+        ];
+
+        assert_eq!(next_marker_number(&annotations), 8);
+        assert_eq!(next_marker_number(&[]), 1);
     }
 }
