@@ -386,7 +386,7 @@ impl Element for TextDraftElement {
             )
             .ok();
         if focus_handle.is_focused(window) {
-            window.paint_quad(prepaint.cursor);
+            window.paint_quad(prepaint.cursor.clone());
         }
         let line = prepaint.line.clone();
         self.input.update(cx, |input, _| {
