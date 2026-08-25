@@ -2,9 +2,9 @@ use std::ops::Range;
 
 use gpui::{
     App, Bounds, Context, CursorStyle, Element, ElementId, ElementInputHandler, Entity,
-    EntityInputHandler, FocusHandle, Focusable, GlobalElementId, IntoElement, KeyDownEvent, LayoutId,
-    PaintQuad, Pixels, Point, Render, ShapedLine, SharedString, Style, TextRun, UTF16Selection,
-    Window, div, fill, point, prelude::*, px, relative, rgba, size,
+    EntityInputHandler, FocusHandle, Focusable, GlobalElementId, IntoElement, KeyDownEvent,
+    LayoutId, PaintQuad, Pixels, Point, Render, ShapedLine, SharedString, Style, TextRun,
+    UTF16Selection, Window, div, fill, point, prelude::*, px, relative, rgba, size,
 };
 
 pub struct TextDraftInput {
