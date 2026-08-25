@@ -1,9 +1,13 @@
 use gpui::{
-    App, Bounds, Context, CursorStyle, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    PathBuilder, Pixels, Point, Render, Window, WindowBounds, WindowOptions, canvas, div, img,
-    point, prelude::*, px, rgba, size,
+    App, Bounds, Context, CursorStyle, Entity, Focusable, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels, Point, Render, Window, WindowBounds,
+    WindowOptions, canvas, div, img, point, prelude::*, px, rgba, size,
 };
-use sidekick_core::{Annotation, AnnotationStyle, EditorDocument, MarkerStyle, Point as CorePoint};
+use sidekick_core::{
+    Annotation, AnnotationStyle, EditorDocument, MarkerStyle, Point as CorePoint, TextStyle,
+};
+
+use crate::{text_annotation::TextAnnotationDraft, text_input::TextDraftInput};
 
 const WINDOW_WIDTH: f32 = 1100.0;
 const WINDOW_HEIGHT: f32 = 760.0;
@@ -21,6 +25,7 @@ pub enum AnnotationTool {
     Arrow,
     Freehand,
     NumberMarker,
+    Text,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -38,6 +43,8 @@ pub struct AnnotationCanvasView {
     drag_start: Option<CorePoint>,
     drag_current: Option<CorePoint>,
     freehand_points: Vec<CorePoint>,
+    text_draft: Option<TextAnnotationDraft>,
+    text_input: Option<Entity<TextDraftInput>>,
 }
 
 impl AnnotationCanvasView {
@@ -48,6 +55,8 @@ impl AnnotationCanvasView {
             drag_start: None,
             drag_current: None,
             freehand_points: Vec::new(),
+            text_draft: None,
+            text_input: None,
         }
     }
 
@@ -59,7 +68,10 @@ impl AnnotationCanvasView {
         self.active_tool
     }
 
-    fn set_tool(&mut self, tool: AnnotationTool) {
+    fn set_tool(&mut self, tool: AnnotationTool, cx: &mut Context<Self>) {
+        if self.active_tool == AnnotationTool::Text && tool != AnnotationTool::Text {
+            self.commit_text_draft(cx);
+        }
         self.active_tool = tool;
         self.drag_start = None;
         self.drag_current = None;
@@ -108,6 +120,7 @@ impl AnnotationCanvasView {
                 | AnnotationTool::Arrow
                 | AnnotationTool::Freehand
                 | AnnotationTool::NumberMarker
+                | AnnotationTool::Text
         ) {
             return None;
         }
@@ -148,6 +161,36 @@ impl AnnotationCanvasView {
             number,
             style: Self::marker_style(),
         });
+    }
+
+    fn start_text_draft(
+        &mut self,
+        position: CorePoint,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.commit_text_draft(cx);
+        self.text_draft = Some(TextAnnotationDraft::new(position));
+
+        if let Some(input) = self.text_input.as_ref().cloned() {
+            input.update(cx, |input, cx| input.reset(cx));
+            window.focus(&input.focus_handle(cx), cx);
+        }
+    }
+
+    fn commit_text_draft(&mut self, cx: &mut Context<Self>) {
+        let Some(draft) = self.text_draft.take() else {
+            return;
+        };
+        let Some(input) = self.text_input.as_ref().cloned() else {
+            return;
+        };
+
+        let text = input.read(cx).content().to_owned();
+        if let Some(annotation) = draft.commit(text) {
+            self.document.add_annotation(annotation);
+        }
+        input.update(cx, |input, cx| input.reset(cx));
     }
 
     fn finish_drag(&mut self, end: CorePoint) {
@@ -201,9 +244,10 @@ impl AnnotationCanvasView {
                     style: Self::outline_style(),
                 })
             }
-            AnnotationTool::Select | AnnotationTool::Freehand | AnnotationTool::NumberMarker => {
-                None
-            }
+            AnnotationTool::Select
+            | AnnotationTool::Freehand
+            | AnnotationTool::NumberMarker
+            | AnnotationTool::Text => None,
         };
 
         if let Some(annotation) = annotation {
@@ -227,6 +271,10 @@ impl AnnotationCanvasView {
 
 impl Render for AnnotationCanvasView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.text_input.is_none() {
+            self.text_input = Some(cx.new(|cx| TextDraftInput::new(cx)));
+        }
+
         let geometry = self.image_geometry();
         let preview = self.drag_bounds(geometry);
         let annotation_layers = self
@@ -240,6 +288,13 @@ impl Render for AnnotationCanvasView {
         let drag_start = self.drag_start;
         let drag_current = self.drag_current;
         let freehand_preview = self.freehand_points.clone();
+        let text_editor = self.text_draft.as_ref().and_then(|draft| {
+            self.text_input
+                .as_ref()
+                .cloned()
+                .map(|input| (draft.position(), input))
+        });
+        let has_text_draft = self.text_draft.is_some();
 
         div()
             .size_full()
@@ -302,7 +357,16 @@ impl Render for AnnotationCanvasView {
                         AnnotationTool::NumberMarker,
                         self.active_tool,
                         cx,
-                    )),
+                    ))
+                    .child(tool_button(
+                        "Text",
+                        AnnotationTool::Text,
+                        self.active_tool,
+                        cx,
+                    ))
+                    .when(has_text_draft, |toolbar| {
+                        toolbar.child(text_done_button(cx))
+                    }),
             )
             .child(
                 div()
@@ -312,6 +376,7 @@ impl Render for AnnotationCanvasView {
                     .w_full()
                     .cursor(match self.active_tool {
                         AnnotationTool::Select => CursorStyle::Arrow,
+                        AnnotationTool::Text => CursorStyle::IBeam,
                         _ => CursorStyle::Crosshair,
                     })
                     .bg(rgba(0x2a2a2eff))
@@ -388,6 +453,17 @@ impl Render for AnnotationCanvasView {
                                 .bg(rgba(0xff3b3022)),
                         )
                     })
+                    .when_some(text_editor, |canvas, (position, input)| {
+                        let left = geometry.origin_x + position.x * geometry.scale;
+                        let top = geometry.origin_y + position.y * geometry.scale;
+                        canvas.child(
+                            div()
+                                .absolute()
+                                .left(px(left))
+                                .top(px(top))
+                                .child(input),
+                        )
+                    })
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|view, event: &MouseDownEvent, window, cx| {
@@ -405,6 +481,9 @@ impl Render for AnnotationCanvasView {
                                 }
                                 AnnotationTool::NumberMarker => {
                                     view.add_number_marker(position);
+                                }
+                                AnnotationTool::Text => {
+                                    view.start_text_draft(position, window, cx);
                                 }
                                 _ => {
                                     view.drag_start = Some(position);
@@ -440,7 +519,10 @@ impl Render for AnnotationCanvasView {
                     .on_mouse_up(
                         MouseButton::Left,
                         cx.listener(|view, event: &MouseUpEvent, window, cx| {
-                            if view.active_tool == AnnotationTool::NumberMarker {
+                            if matches!(
+                                view.active_tool,
+                                AnnotationTool::NumberMarker | AnnotationTool::Text
+                            ) {
                                 return;
                             }
                             if view.active_tool == AnnotationTool::Freehand {
@@ -488,7 +570,24 @@ fn tool_button(
         .text_color(gpui::white())
         .child(label)
         .on_click(cx.listener(move |view, _, window, cx| {
-            view.set_tool(tool);
+            view.set_tool(tool, cx);
+            window.refresh();
+            cx.notify();
+        }))
+}
+
+fn text_done_button(cx: &mut Context<AnnotationCanvasView>) -> impl IntoElement {
+    div()
+        .id("text-done")
+        .px_3()
+        .py_1()
+        .rounded(px(6.0))
+        .cursor_pointer()
+        .bg(rgba(0x2f7d4aff))
+        .text_color(gpui::white())
+        .child("Done")
+        .on_click(cx.listener(|view, _, window, cx| {
+            view.commit_text_draft(cx);
             window.refresh();
             cx.notify();
         }))
@@ -511,6 +610,9 @@ fn render_annotation_layer(
             number,
             style,
         } => Some(render_number_marker(x, y, number, style, geometry).into_any_element()),
+        Annotation::Text { x, y, text, style } => {
+            Some(render_text_annotation(x, y, text, style, geometry).into_any_element())
+        }
         annotation @ (Annotation::Line { .. }
         | Annotation::Arrow { .. }
         | Annotation::Freehand { .. }) => Some(
@@ -526,7 +628,6 @@ fn render_annotation_layer(
             .size_full()
             .into_any_element(),
         ),
-        Annotation::Text { .. } => None,
     }
 }
 
@@ -603,6 +704,34 @@ fn render_number_marker(
         .text_color(foreground)
         .text_size(px(diameter * 0.52))
         .child(number.to_string())
+}
+
+fn render_text_annotation(
+    x: f32,
+    y: f32,
+    text: String,
+    style: TextStyle,
+    geometry: ImageGeometry,
+) -> gpui::Div {
+    let left = geometry.origin_x + x * geometry.scale;
+    let top = geometry.origin_y + y * geometry.scale;
+    let color = parse_color(&style.color).unwrap_or_else(|| rgba(0xffffffff));
+    let background = style.background.as_deref().and_then(parse_color);
+    let font_size = (style.font_size * geometry.scale).max(8.0);
+
+    let layer = div()
+        .absolute()
+        .left(px(left))
+        .top(px(top))
+        .text_color(color)
+        .text_size(px(font_size))
+        .child(text);
+
+    if let Some(background) = background {
+        layer.bg(background).px_1().rounded(px(3.0))
+    } else {
+        layer
+    }
 }
 
 fn next_marker_number(annotations: &[Annotation]) -> u32 {
