@@ -73,12 +73,7 @@ fn encode_rgba(
         ExportFormat::Jpeg { quality } => {
             let rgb = image::DynamicImage::ImageRgba8(image.clone()).to_rgb8();
             let mut encoder = JpegEncoder::new_with_quality(writer, quality.clamp(1, 100));
-            encoder.encode(
-                rgb.as_raw(),
-                width,
-                height,
-                image::ExtendedColorType::Rgb8,
-            )
+            encoder.encode(rgb.as_raw(), width, height, image::ExtendedColorType::Rgb8)
         }
     }
 }
