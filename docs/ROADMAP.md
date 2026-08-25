@@ -42,7 +42,7 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] interactive area selector
 - [x] 0/3/5 second timer
 - [x] include/exclude shadow policy contract
-- [ ] native/reliable shadow-exclusion backend
+- [x] native CoreGraphics shadow-exclusion backend for macOS 13+
 - [ ] shadow policy runtime/settings wiring
 - [ ] all-spaces/floating/excluded-from-capture behavior
 - [ ] click-through only while collapsed
