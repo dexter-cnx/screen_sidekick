@@ -287,7 +287,7 @@ impl AnnotationCanvasView {
 impl Render for AnnotationCanvasView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.text_input.is_none() {
-            self.text_input = Some(cx.new(|cx| TextDraftInput::new(cx)));
+            self.text_input = Some(cx.new(TextDraftInput::new));
         }
 
         let geometry = self.image_geometry();
