@@ -22,7 +22,7 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] tray icon and menu foundation
 - [x] Option+1 fullscreen hotkey registration
 - [x] tray/hotkey event dispatch into GPUI controller
-- [ ] global hotkeys: window/area
+- [x] global hotkeys: window/area
 - [x] configurable key recorder model
 - [x] wire configurable hotkey model into runtime registration
 - [x] settings/key-recorder UI
