@@ -1,3 +1,4 @@
+use crate::apply_overlay_window_behavior;
 use gpui::{
     App, Bounds, ClipboardItem, Context, Image, ImageFormat, Render, Window,
     WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, img, point,
@@ -30,7 +31,9 @@ impl OverlayCard {
 }
 
 impl Render for OverlayCard {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        apply_overlay_window_behavior(window);
+
         let image_path = self.capture.path.clone();
         let copy_path = image_path.clone();
         let delete_path = image_path.clone();
@@ -175,7 +178,9 @@ impl PeekTab {
 }
 
 impl Render for PeekTab {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        apply_overlay_window_behavior(window);
+
         let activate_sender = self.activate_sender.clone();
         div()
             .id("peek-tab")
