@@ -48,19 +48,27 @@ impl HighlightDimmerDraft {
         (left, top, width, height)
     }
 
-    pub fn commit(self) -> Option<Annotation> {
-        let (x, y, w, h) = self.normalized_bounds();
-        if w < MIN_HIGHLIGHT_SIZE || h < MIN_HIGHLIGHT_SIZE {
-            return None;
-        }
+    pub fn is_committable(&self) -> bool {
+        let (_, _, width, height) = self.normalized_bounds();
+        width >= MIN_HIGHLIGHT_SIZE && height >= MIN_HIGHLIGHT_SIZE
+    }
 
-        Some(Annotation::HighlightDimmer {
+    pub fn preview_annotation(&self) -> Annotation {
+        let (x, y, w, h) = self.normalized_bounds();
+        Annotation::HighlightDimmer {
             x,
             y,
             w,
             h,
-            style: self.style,
-        })
+            style: self.style.clone(),
+        }
+    }
+
+    pub fn commit(self) -> Option<Annotation> {
+        if !self.is_committable() {
+            return None;
+        }
+        Some(self.preview_annotation())
     }
 }
 
@@ -108,6 +116,22 @@ mod tests {
     fn tiny_draft_does_not_commit() {
         let mut draft = HighlightDimmerDraft::with_defaults(Point { x: 1.0, y: 1.0 });
         draft.update(Point { x: 2.0, y: 20.0 });
+        assert!(!draft.is_committable());
         assert_eq!(draft.commit(), None);
+    }
+
+    #[test]
+    fn preview_annotation_does_not_consume_draft() {
+        let mut draft = HighlightDimmerDraft::with_defaults(Point { x: 40.0, y: 60.0 });
+        draft.update(Point { x: 10.0, y: 20.0 });
+
+        assert!(draft.is_committable());
+        assert!(matches!(
+            draft.preview_annotation(),
+            Annotation::HighlightDimmer { x, y, w, h, .. }
+                if x == 10.0 && y == 20.0 && w == 30.0 && h == 40.0
+        ));
+        assert_eq!(draft.start(), Point { x: 40.0, y: 60.0 });
+        assert_eq!(draft.end(), Point { x: 10.0, y: 20.0 });
     }
 }
