@@ -63,6 +63,7 @@ pub struct AnnotationCanvasView {
     text_input: Option<Entity<TextDraftInput>>,
     preview_id: u64,
     preview_generation: u64,
+    preview_rendering_generation: Option<u64>,
     preview_path: Option<PathBuf>,
     preview_dirty: bool,
 }
@@ -80,6 +81,7 @@ impl AnnotationCanvasView {
             text_input: None,
             preview_id: NEXT_PREVIEW_ID.fetch_add(1, Ordering::Relaxed),
             preview_generation: 0,
+            preview_rendering_generation: None,
             preview_path: None,
             preview_dirty: true,
         }
@@ -104,48 +106,67 @@ impl AnnotationCanvasView {
 
     fn add_annotation(&mut self, annotation: Annotation) -> usize {
         let index = self.document.add_annotation(annotation);
+        self.preview_generation = self.preview_generation.saturating_add(1);
         self.preview_dirty = true;
         index
     }
 
-    fn committed_preview_path(&mut self) -> Option<PathBuf> {
-        if !self.has_committed_effects() {
-            return None;
+    fn ensure_committed_preview(&mut self, cx: &mut Context<Self>) {
+        if !self.has_committed_effects() || !self.preview_dirty {
+            return;
         }
 
-        if !self.preview_dirty
-            && let Some(path) = self.preview_path.as_ref()
-            && path.exists()
-        {
-            return Some(path.clone());
+        if self.preview_rendering_generation.is_some() {
+            return;
         }
 
-        self.preview_generation = self.preview_generation.saturating_add(1);
+        let generation = self.preview_generation;
         let path = std::env::temp_dir().join(format!(
             "screen-sidekick-preview-{}-{}-{}.png",
             std::process::id(),
             self.preview_id,
-            self.preview_generation
+            generation
         ));
+        let base_path = self.document.base().path().to_path_buf();
+        let annotations = self.document.annotations().to_vec();
+        self.preview_rendering_generation = Some(generation);
 
-        if save_annotation_preview(
-            self.document.base().path(),
-            self.document.annotations(),
-            &path,
-        )
-        .is_err()
-        {
-            let _ = fs::remove_file(&path);
-            return None;
-        }
+        let render_task = cx.background_executor().spawn(async move {
+            let succeeded = save_annotation_preview(&base_path, &annotations, &path).is_ok();
+            if !succeeded {
+                let _ = fs::remove_file(&path);
+            }
+            (path, succeeded)
+        });
 
-        if let Some(previous) = self.preview_path.replace(path.clone())
-            && previous != path
-        {
-            let _ = fs::remove_file(previous);
-        }
-        self.preview_dirty = false;
-        Some(path)
+        cx.spawn(async move |view, cx| {
+            let (path, succeeded) = render_task.await;
+            let update_result = view.update(cx, |view, cx| {
+                if view.preview_rendering_generation == Some(generation) {
+                    view.preview_rendering_generation = None;
+                }
+
+                if !succeeded || view.preview_generation != generation {
+                    let _ = fs::remove_file(&path);
+                    view.preview_dirty = true;
+                    cx.notify();
+                    return;
+                }
+
+                if let Some(previous) = view.preview_path.replace(path.clone())
+                    && previous != path
+                {
+                    let _ = fs::remove_file(previous);
+                }
+                view.preview_dirty = false;
+                cx.notify();
+            });
+
+            if update_result.is_err() {
+                let _ = fs::remove_file(path);
+            }
+        })
+        .detach();
     }
 
     fn set_tool(&mut self, tool: AnnotationTool, cx: &mut Context<Self>) {
@@ -412,7 +433,8 @@ impl Render for AnnotationCanvasView {
 
         let geometry = self.image_geometry();
         let preview = self.drag_bounds(geometry);
-        let derived_preview_path = self.committed_preview_path();
+        self.ensure_committed_preview(cx);
+        let derived_preview_path = self.preview_path.clone();
         let use_derived_preview = derived_preview_path.is_some();
         let annotation_layers = if use_derived_preview {
             Vec::new()
@@ -424,8 +446,8 @@ impl Render for AnnotationCanvasView {
                 .filter_map(|annotation| render_annotation_layer(annotation, geometry))
                 .collect::<Vec<_>>()
         };
-        let base_path = derived_preview_path
-            .unwrap_or_else(|| self.document.base().path().to_path_buf());
+        let base_path =
+            derived_preview_path.unwrap_or_else(|| self.document.base().path().to_path_buf());
         let active_tool = self.active_tool;
         let drag_start = self.drag_start;
         let drag_current = self.drag_current;
