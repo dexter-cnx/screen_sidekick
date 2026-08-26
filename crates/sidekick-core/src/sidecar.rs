@@ -66,6 +66,13 @@ pub enum Annotation {
         points: Vec<Point>,
         style: EffectBrushStyle,
     },
+    HighlightDimmer {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        style: DimmerStyle,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -100,6 +107,21 @@ impl EffectBrushStyle {
         Self {
             radius: radius.max(1.0),
             strength: strength.clamp(0.0, 1.0),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DimmerStyle {
+    pub color: String,
+    pub opacity: f32,
+}
+
+impl DimmerStyle {
+    pub fn new(color: impl Into<String>, opacity: f32) -> Self {
+        Self {
+            color: color.into(),
+            opacity: opacity.clamp(0.0, 1.0),
         }
     }
 }
@@ -252,6 +274,24 @@ mod tests {
     }
 
     #[test]
+    fn highlight_dimmer_annotation_round_trips() {
+        let mut document = SidecarDocument::empty("sha256:base");
+        document.push(Annotation::HighlightDimmer {
+            x: 10.0,
+            y: 20.0,
+            w: 300.0,
+            h: 120.0,
+            style: DimmerStyle::new("#000000", 0.55),
+        });
+
+        let json = serde_json::to_string(&document).unwrap();
+        let decoded: SidecarDocument = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(decoded, document);
+        assert!(json.contains("\"type\":\"highlight_dimmer\""));
+    }
+
+    #[test]
     fn effect_brush_style_normalizes_radius_and_strength() {
         assert_eq!(
             EffectBrushStyle::new(0.0, 2.0),
@@ -265,6 +305,24 @@ mod tests {
             EffectBrushStyle {
                 radius: 12.0,
                 strength: 0.0,
+            }
+        );
+    }
+
+    #[test]
+    fn dimmer_style_normalizes_opacity() {
+        assert_eq!(
+            DimmerStyle::new("#000000", 2.0),
+            DimmerStyle {
+                color: "#000000".to_owned(),
+                opacity: 1.0,
+            }
+        );
+        assert_eq!(
+            DimmerStyle::new("#101010", -0.5),
+            DimmerStyle {
+                color: "#101010".to_owned(),
+                opacity: 0.0,
             }
         );
     }
