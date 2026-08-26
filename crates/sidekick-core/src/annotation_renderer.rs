@@ -39,7 +39,7 @@ pub fn render_annotations(base: &RgbaImage, annotations: &[Annotation]) -> RgbaI
             } => {
                 draw_number_marker(&mut output, *x, *y, *number, style);
             }
-            Annotation::Text { .. } => {}
+            Annotation::Text { .. } | Annotation::HighlightDimmer { .. } => {}
         }
     }
 

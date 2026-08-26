@@ -22,7 +22,7 @@ pub use model::{CaptureFrame, CaptureMode, CaptureOptions, SavedCapture};
 pub use preview::{DEFAULT_PREVIEW_LIMIT, PreviewStack, PreviewVisibility, PreviewVisibilityState};
 pub use preview_render::save_annotation_preview;
 pub use sidecar::{
-    Annotation, AnnotationStyle, EffectBrushStyle, MarkerStyle, Point, SIDECAR_VERSION,
-    SidecarDocument, TextStyle,
+    Annotation, AnnotationStyle, DimmerStyle, EffectBrushStyle, MarkerStyle, Point,
+    SIDECAR_VERSION, SidecarDocument, TextStyle,
 };
 pub use text_renderer::render_annotations_with_text;

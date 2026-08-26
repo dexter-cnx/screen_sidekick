@@ -815,6 +815,7 @@ fn render_annotation_layer(
         Annotation::Text { x, y, text, style } => {
             Some(render_text_annotation(x, y, text, style, geometry).into_any_element())
         }
+        Annotation::HighlightDimmer { .. } => None,
         Annotation::BlurBrush { points, style } => Some(
             effect_brush_layer(points, style, EffectBrushKind::Blur, geometry).into_any_element(),
         ),
@@ -897,7 +898,6 @@ fn styled_shape(
         .and_then(parse_color)
         .unwrap_or_else(|| rgba(0x00000000));
     let border_width = (style.stroke_width * geometry.scale).max(1.0);
-
     let shape = div()
         .absolute()
         .left(px(left))

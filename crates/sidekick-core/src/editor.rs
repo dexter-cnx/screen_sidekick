@@ -232,6 +232,7 @@ fn translate_annotation(annotation: &mut Annotation, dx: f32, dy: f32) {
     match annotation {
         Annotation::Rectangle { x, y, .. }
         | Annotation::Ellipse { x, y, .. }
+        | Annotation::HighlightDimmer { x, y, .. }
         | Annotation::Text { x, y, .. }
         | Annotation::NumberMarker { x, y, .. } => {
             *x += dx;
@@ -253,7 +254,9 @@ fn translate_annotation(annotation: &mut Annotation, dx: f32, dy: f32) {
 
 fn scale_annotation(annotation: &mut Annotation, origin: Point, scale_x: f32, scale_y: f32) {
     match annotation {
-        Annotation::Rectangle { x, y, w, h, .. } | Annotation::Ellipse { x, y, w, h, .. } => {
+        Annotation::Rectangle { x, y, w, h, .. }
+        | Annotation::Ellipse { x, y, w, h, .. }
+        | Annotation::HighlightDimmer { x, y, w, h, .. } => {
             let mut top_left = Point { x: *x, y: *y };
             scale_point(&mut top_left, origin, scale_x, scale_y);
             *x = top_left.x;
