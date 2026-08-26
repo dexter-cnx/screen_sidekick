@@ -1,8 +1,41 @@
 #!/bin/sh
 set -eu
 
-echo "==> cargo fmt --all"
-cargo fmt --all
+zero_sha=0000000000000000000000000000000000000000
 
-echo "==> cargo fmt --all -- --check"
-cargo fmt --all -- --check
+tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/screen-sidekick-prepush.XXXXXX")"
+cleanup() {
+  rm -rf "$tmp_root"
+}
+trap cleanup EXIT HUP INT TERM
+
+status=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -n "${local_sha:-}" ] || continue
+  [ "$local_sha" != "$zero_sha" ] || continue
+
+  worktree="$tmp_root/$(printf '%s' "$local_sha" | cut -c1-12)"
+  echo "==> checking rustfmt for $local_ref ($local_sha)"
+
+  git worktree add --detach --quiet "$worktree" "$local_sha"
+  (
+    cd "$worktree"
+    cargo fmt --all
+    if ! git diff --quiet --; then
+      echo ""
+      echo "rustfmt would change commit $local_sha ($local_ref)."
+      echo "Format and commit those changes before pushing."
+      git --no-pager diff --stat
+      exit 1
+    fi
+    cargo fmt --all -- --check
+  ) || status=1
+  git worktree remove --force "$worktree" >/dev/null 2>&1 || true
+
+  if [ "$status" -ne 0 ]; then
+    break
+  fi
+done
+
+exit "$status"
