@@ -1,6 +1,8 @@
 use image::{Rgba, RgbaImage};
 
-use crate::{Annotation, AnnotationStyle, MarkerStyle, Point, composite_effect_brushes};
+use crate::{
+    Annotation, AnnotationStyle, DimmerStyle, MarkerStyle, Point, composite_effect_brushes,
+};
 
 pub fn render_annotations(base: &RgbaImage, annotations: &[Annotation]) -> RgbaImage {
     let mut output = base.clone();
@@ -39,7 +41,10 @@ pub fn render_annotations(base: &RgbaImage, annotations: &[Annotation]) -> RgbaI
             } => {
                 draw_number_marker(&mut output, *x, *y, *number, style);
             }
-            Annotation::Text { .. } | Annotation::HighlightDimmer { .. } => {}
+            Annotation::HighlightDimmer { x, y, w, h, style } => {
+                draw_highlight_dimmer(&mut output, *x, *y, *w, *h, style);
+            }
+            Annotation::Text { .. } => {}
         }
     }
 
@@ -102,6 +107,40 @@ fn fill_rect(image: &mut RgbaImage, left: f32, top: f32, right: f32, bottom: f32
     for py in min_y..max_y {
         for px in min_x..max_x {
             blend_pixel(image, px, py, color);
+        }
+    }
+}
+
+fn draw_highlight_dimmer(
+    image: &mut RgbaImage,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    style: &DimmerStyle,
+) {
+    let image_width = image.width() as f32;
+    let image_height = image.height() as f32;
+    let left = x.min(x + w).clamp(0.0, image_width);
+    let right = x.max(x + w).clamp(0.0, image_width);
+    let top = y.min(y + h).clamp(0.0, image_height);
+    let bottom = y.max(y + h).clamp(0.0, image_height);
+
+    let mut color = parse_color(&style.color);
+    color[3] = ((color[3] as f32 * style.opacity.clamp(0.0, 1.0)).round()) as u8;
+    if color[3] == 0 {
+        return;
+    }
+
+    for py in 0..image.height() {
+        let sample_y = py as f32 + 0.5;
+        for px in 0..image.width() {
+            let sample_x = px as f32 + 0.5;
+            let inside_highlight =
+                sample_x >= left && sample_x < right && sample_y >= top && sample_y < bottom;
+            if !inside_highlight {
+                blend_pixel(image, px, py, color);
+            }
         }
     }
 }
@@ -414,6 +453,61 @@ mod tests {
 
         assert_ne!(rendered.get_pixel(4, 5), base.get_pixel(4, 5));
         assert_eq!(rendered.get_pixel(0, 0), base.get_pixel(0, 0));
+    }
+
+    #[test]
+    fn highlight_dimmer_preserves_highlight_and_dims_surroundings() {
+        let base = RgbaImage::from_pixel(20, 20, Rgba([200, 200, 200, 255]));
+        let dimmer = Annotation::HighlightDimmer {
+            x: 5.0,
+            y: 6.0,
+            w: 8.0,
+            h: 7.0,
+            style: DimmerStyle::new("#000000", 0.5),
+        };
+
+        let rendered = render_annotations(&base, &[dimmer]);
+
+        assert_eq!(rendered.get_pixel(8, 8), base.get_pixel(8, 8));
+        assert_ne!(rendered.get_pixel(0, 0), base.get_pixel(0, 0));
+        assert_eq!(rendered.get_pixel(0, 0), &Rgba([100, 100, 100, 255]));
+    }
+
+    #[test]
+    fn highlight_dimmer_combines_color_alpha_with_style_opacity() {
+        let base = RgbaImage::from_pixel(4, 4, Rgba([255, 255, 255, 255]));
+        let dimmer = Annotation::HighlightDimmer {
+            x: 1.0,
+            y: 1.0,
+            w: 2.0,
+            h: 2.0,
+            style: DimmerStyle::new("#00000080", 0.5),
+        };
+
+        let rendered = render_annotations(&base, &[dimmer]);
+
+        assert_eq!(rendered.get_pixel(1, 1), base.get_pixel(1, 1));
+        assert_eq!(rendered.get_pixel(0, 0), &Rgba([191, 191, 191, 255]));
+    }
+
+    #[test]
+    fn fractional_highlight_edges_dim_each_outside_pixel_once() {
+        let base = RgbaImage::from_pixel(4, 4, Rgba([255, 255, 255, 255]));
+        let dimmer = Annotation::HighlightDimmer {
+            x: 1.25,
+            y: 1.25,
+            w: 1.5,
+            h: 1.5,
+            style: DimmerStyle::new("#000000", 0.5),
+        };
+
+        let rendered = render_annotations(&base, &[dimmer]);
+
+        assert_eq!(rendered.get_pixel(1, 1), base.get_pixel(1, 1));
+        assert_eq!(rendered.get_pixel(2, 2), base.get_pixel(2, 2));
+        assert_eq!(rendered.get_pixel(0, 1), &Rgba([127, 127, 127, 255]));
+        assert_eq!(rendered.get_pixel(1, 0), &Rgba([127, 127, 127, 255]));
+        assert_eq!(rendered.get_pixel(0, 0), &Rgba([127, 127, 127, 255]));
     }
 
     #[test]
