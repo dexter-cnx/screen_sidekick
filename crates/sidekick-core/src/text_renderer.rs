@@ -21,13 +21,7 @@ pub fn render_annotations_with_text(base: &RgbaImage, annotations: &[Annotation]
     let mut chunk_start = 0;
 
     for (index, annotation) in annotations.iter().enumerate() {
-        let Annotation::Text {
-            x,
-            y,
-            text,
-            style,
-        } = annotation
-        else {
+        let Annotation::Text { x, y, text, style } = annotation else {
             continue;
         };
 
@@ -100,34 +94,20 @@ fn render_text_annotation(
     let origin_x = x.round() as i32;
     let origin_y = y.round() as i32;
 
-    buffer.draw(font_system, cache, draw_color, |gx, gy, width, height, color| {
-        let callback_rgba = color.as_rgba();
-        let alpha = ((u16::from(callback_rgba[3]) * u16::from(style_alpha) + 127) / 255) as u8;
-        let pixel = Rgba([
-            callback_rgba[0],
-            callback_rgba[1],
-            callback_rgba[2],
-            alpha,
-        ]);
-        fill_rect_i32(
-            image,
-            origin_x + gx,
-            origin_y + gy,
-            width,
-            height,
-            pixel,
-        );
-    });
+    buffer.draw(
+        font_system,
+        cache,
+        draw_color,
+        |gx, gy, width, height, color| {
+            let callback_rgba = color.as_rgba();
+            let alpha = ((u16::from(callback_rgba[3]) * u16::from(style_alpha) + 127) / 255) as u8;
+            let pixel = Rgba([callback_rgba[0], callback_rgba[1], callback_rgba[2], alpha]);
+            fill_rect_i32(image, origin_x + gx, origin_y + gy, width, height, pixel);
+        },
+    );
 }
 
-fn fill_rect(
-    image: &mut RgbaImage,
-    left: f32,
-    top: f32,
-    right: f32,
-    bottom: f32,
-    color: Rgba<u8>,
-) {
+fn fill_rect(image: &mut RgbaImage, left: f32, top: f32, right: f32, bottom: f32, color: Rgba<u8>) {
     let min_x = left.floor().max(0.0) as u32;
     let min_y = top.floor().max(0.0) as u32;
     let max_x = right.ceil().max(0.0).min(image.width() as f32) as u32;
@@ -286,7 +266,8 @@ mod tests {
             },
         };
 
-        let text_then_blur = render_annotations_with_text(&base, &[text.clone(), blur.clone(), line.clone()]);
+        let text_then_blur =
+            render_annotations_with_text(&base, &[text.clone(), blur.clone(), line.clone()]);
         let blur_then_text = render_annotations_with_text(&base, &[blur, text, line]);
         assert_ne!(text_then_blur, blur_then_text);
     }
