@@ -10,12 +10,13 @@ use gpui::{
     WindowOptions, canvas, div, img, point, prelude::*, px, rgba, size,
 };
 use sidekick_core::{
-    Annotation, AnnotationStyle, EditorDocument, EffectBrushStyle, MarkerStyle, Point as CorePoint,
-    TextStyle, save_annotation_preview,
+    Annotation, AnnotationStyle, DimmerStyle, EditorDocument, EffectBrushStyle, MarkerStyle,
+    Point as CorePoint, TextStyle, save_annotation_preview,
 };
 
 use crate::{
     effect_brush::{EffectBrushDraft, EffectBrushKind},
+    highlight_dimmer::HighlightDimmerDraft,
     text_annotation::TextAnnotationDraft,
     text_input::TextDraftInput,
 };
@@ -39,6 +40,7 @@ pub enum AnnotationTool {
     Freehand,
     Blur,
     Pixelate,
+    Highlight,
     NumberMarker,
     Text,
 }
@@ -59,6 +61,7 @@ pub struct AnnotationCanvasView {
     drag_current: Option<CorePoint>,
     freehand_points: Vec<CorePoint>,
     effect_brush_draft: Option<EffectBrushDraft>,
+    highlight_dimmer_draft: Option<HighlightDimmerDraft>,
     text_draft: Option<TextAnnotationDraft>,
     text_input: Option<Entity<TextDraftInput>>,
     preview_id: u64,
@@ -77,6 +80,7 @@ impl AnnotationCanvasView {
             drag_current: None,
             freehand_points: Vec::new(),
             effect_brush_draft: None,
+            highlight_dimmer_draft: None,
             text_draft: None,
             text_input: None,
             preview_id: NEXT_PREVIEW_ID.fetch_add(1, Ordering::Relaxed),
@@ -96,12 +100,10 @@ impl AnnotationCanvasView {
     }
 
     fn has_committed_effects(&self) -> bool {
-        self.document.annotations().iter().any(|annotation| {
-            matches!(
-                annotation,
-                Annotation::BlurBrush { .. } | Annotation::PixelateBrush { .. }
-            )
-        })
+        self.document
+            .annotations()
+            .iter()
+            .any(annotation_requires_derived_preview)
     }
 
     fn add_annotation(&mut self, annotation: Annotation) -> usize {
@@ -181,6 +183,7 @@ impl AnnotationCanvasView {
         self.drag_current = None;
         self.freehand_points.clear();
         self.effect_brush_draft = None;
+        self.highlight_dimmer_draft = None;
     }
 
     fn image_geometry(&self) -> ImageGeometry {
@@ -226,6 +229,7 @@ impl AnnotationCanvasView {
                 | AnnotationTool::Freehand
                 | AnnotationTool::Blur
                 | AnnotationTool::Pixelate
+                | AnnotationTool::Highlight
                 | AnnotationTool::NumberMarker
                 | AnnotationTool::Text
         ) {
@@ -291,6 +295,30 @@ impl AnnotationCanvasView {
         };
         if let Some(position) = position {
             draft.push_point(position);
+        }
+        if let Some(annotation) = draft.commit() {
+            self.add_annotation(annotation);
+        }
+    }
+
+    fn start_highlight_dimmer(&mut self, position: CorePoint) {
+        self.highlight_dimmer_draft = Some(HighlightDimmerDraft::with_defaults(position));
+    }
+
+    fn update_highlight_dimmer(&mut self, position: CorePoint) -> bool {
+        let Some(draft) = self.highlight_dimmer_draft.as_mut() else {
+            return false;
+        };
+        draft.update(position);
+        true
+    }
+
+    fn finish_highlight_dimmer(&mut self, position: Option<CorePoint>) {
+        let Some(mut draft) = self.highlight_dimmer_draft.take() else {
+            return;
+        };
+        if let Some(position) = position {
+            draft.update(position);
         }
         if let Some(annotation) = draft.commit() {
             self.add_annotation(annotation);
@@ -394,6 +422,7 @@ impl AnnotationCanvasView {
             | AnnotationTool::Freehand
             | AnnotationTool::Blur
             | AnnotationTool::Pixelate
+            | AnnotationTool::Highlight
             | AnnotationTool::NumberMarker
             | AnnotationTool::Text => None,
         };
@@ -453,6 +482,10 @@ impl Render for AnnotationCanvasView {
         let drag_current = self.drag_current;
         let freehand_preview = self.freehand_points.clone();
         let effect_brush_preview = self.effect_brush_draft.clone();
+        let highlight_preview = self
+            .highlight_dimmer_draft
+            .as_ref()
+            .map(HighlightDimmerDraft::preview_annotation);
         let text_editor = self.text_draft.as_ref().and_then(|draft| {
             self.text_input
                 .as_ref()
@@ -526,6 +559,12 @@ impl Render for AnnotationCanvasView {
                     .child(tool_button(
                         "Pixelate",
                         AnnotationTool::Pixelate,
+                        self.active_tool,
+                        cx,
+                    ))
+                    .child(tool_button(
+                        "Highlight",
+                        AnnotationTool::Highlight,
                         self.active_tool,
                         cx,
                     ))
@@ -625,6 +664,9 @@ impl Render for AnnotationCanvasView {
                             geometry,
                         ))
                     })
+                    .when_some(highlight_preview, |canvas, annotation| {
+                        canvas.child(render_highlight_dimmer_annotation(annotation, geometry))
+                    })
                     .when_some(preview, |canvas, bounds| {
                         canvas.child(
                             div()
@@ -668,6 +710,9 @@ impl Render for AnnotationCanvasView {
                                 AnnotationTool::Blur | AnnotationTool::Pixelate => {
                                     view.start_effect_brush(position);
                                 }
+                                AnnotationTool::Highlight => {
+                                    view.start_highlight_dimmer(position);
+                                }
                                 AnnotationTool::NumberMarker => {
                                     view.add_number_marker(position);
                                 }
@@ -707,6 +752,11 @@ impl Render for AnnotationCanvasView {
                                 window.refresh();
                                 cx.notify();
                             }
+                        } else if view.active_tool == AnnotationTool::Highlight {
+                            if view.update_highlight_dimmer(position) {
+                                window.refresh();
+                                cx.notify();
+                            }
                         } else if view.drag_start.is_some() {
                             view.drag_current = Some(position);
                             window.refresh();
@@ -727,6 +777,8 @@ impl Render for AnnotationCanvasView {
                                 AnnotationTool::Blur | AnnotationTool::Pixelate
                             ) {
                                 view.finish_effect_brush(view.pointer_to_base(event.position));
+                            } else if view.active_tool == AnnotationTool::Highlight {
+                                view.finish_highlight_dimmer(view.pointer_to_base(event.position));
                             } else if view.active_tool == AnnotationTool::Freehand {
                                 if let Some(position) = view.pointer_to_base(event.position)
                                     && view
@@ -815,7 +867,9 @@ fn render_annotation_layer(
         Annotation::Text { x, y, text, style } => {
             Some(render_text_annotation(x, y, text, style, geometry).into_any_element())
         }
-        Annotation::HighlightDimmer { .. } => None,
+        annotation @ Annotation::HighlightDimmer { .. } => {
+            Some(render_highlight_dimmer_annotation(annotation, geometry).into_any_element())
+        }
         Annotation::BlurBrush { points, style } => Some(
             effect_brush_layer(points, style, EffectBrushKind::Blur, geometry).into_any_element(),
         ),
@@ -839,6 +893,75 @@ fn render_annotation_layer(
             .into_any_element(),
         ),
     }
+}
+
+fn render_highlight_dimmer_annotation(
+    annotation: Annotation,
+    geometry: ImageGeometry,
+) -> gpui::Div {
+    let Annotation::HighlightDimmer { x, y, w, h, style } = annotation else {
+        return div();
+    };
+    highlight_dimmer_layer(x, y, w, h, style, geometry)
+}
+
+fn highlight_dimmer_layer(
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    style: DimmerStyle,
+    geometry: ImageGeometry,
+) -> gpui::Div {
+    let left = (x * geometry.scale).clamp(0.0, geometry.width);
+    let top = (y * geometry.scale).clamp(0.0, geometry.height);
+    let right = ((x + w) * geometry.scale).clamp(0.0, geometry.width);
+    let bottom = ((y + h) * geometry.scale).clamp(0.0, geometry.height);
+    let color = parse_dimmer_color(&style.color, style.opacity);
+
+    div()
+        .absolute()
+        .left(px(geometry.origin_x))
+        .top(px(geometry.origin_y))
+        .w(px(geometry.width))
+        .h(px(geometry.height))
+        .overflow_hidden()
+        .child(
+            div()
+                .absolute()
+                .left(px(0.0))
+                .top(px(0.0))
+                .w(px(geometry.width))
+                .h(px(top))
+                .bg(color),
+        )
+        .child(
+            div()
+                .absolute()
+                .left(px(0.0))
+                .top(px(bottom))
+                .w(px(geometry.width))
+                .h(px((geometry.height - bottom).max(0.0)))
+                .bg(color),
+        )
+        .child(
+            div()
+                .absolute()
+                .left(px(0.0))
+                .top(px(top))
+                .w(px(left))
+                .h(px((bottom - top).max(0.0)))
+                .bg(color),
+        )
+        .child(
+            div()
+                .absolute()
+                .left(px(right))
+                .top(px(top))
+                .w(px((geometry.width - right).max(0.0)))
+                .h(px((bottom - top).max(0.0)))
+                .bg(color),
+        )
 }
 
 fn effect_brush_layer(
@@ -990,6 +1113,15 @@ fn next_marker_number(annotations: &[Annotation]) -> u32 {
         .max()
         .unwrap_or(0)
         .saturating_add(1)
+}
+
+fn annotation_requires_derived_preview(annotation: &Annotation) -> bool {
+    matches!(
+        annotation,
+        Annotation::BlurBrush { .. }
+            | Annotation::PixelateBrush { .. }
+            | Annotation::HighlightDimmer { .. }
+    )
 }
 
 fn effect_brush_kind(tool: AnnotationTool) -> Option<EffectBrushKind> {
@@ -1158,6 +1290,20 @@ fn parse_color(value: &str) -> Option<gpui::Rgba> {
     Some(rgba(packed))
 }
 
+fn parse_dimmer_color(value: &str, opacity: f32) -> gpui::Rgba {
+    let hex = value.strip_prefix('#').unwrap_or(value);
+    let (rgb, alpha) = match hex.len() {
+        6 => (u32::from_str_radix(hex, 16).unwrap_or(0), 255_u8),
+        8 => {
+            let packed = u32::from_str_radix(hex, 16).unwrap_or(0xff);
+            (packed >> 8, (packed & 0xff) as u8)
+        }
+        _ => (0, 255),
+    };
+    let alpha = (alpha as f32 * opacity.clamp(0.0, 1.0)).round() as u8;
+    rgba((rgb << 8) | u32::from(alpha))
+}
+
 pub fn annotation_window_options(cx: &App) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
@@ -1215,5 +1361,23 @@ mod tests {
             Some(EffectBrushKind::Pixelate)
         );
         assert_eq!(effect_brush_kind(AnnotationTool::Freehand), None);
+    }
+
+    #[test]
+    fn highlight_dimmer_requires_derived_preview() {
+        let annotation = Annotation::HighlightDimmer {
+            x: 10.0,
+            y: 20.0,
+            w: 100.0,
+            h: 60.0,
+            style: DimmerStyle::new("#000000", 0.55),
+        };
+        assert!(annotation_requires_derived_preview(&annotation));
+    }
+
+    #[test]
+    fn dimmer_color_combines_alpha_and_opacity() {
+        let color = parse_dimmer_color("#00000080", 0.5);
+        assert_eq!(color, rgba(0x00000040));
     }
 }
