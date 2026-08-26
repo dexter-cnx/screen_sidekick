@@ -15,7 +15,8 @@ pub use capture::{CaptureRegion, CaptureWindow, Capturer, WindowShadowPolicy, Xc
 pub use editor::{BaseImage, EditorDocument};
 pub use effect_compositor::composite_effect_brushes;
 pub use export::{
-    DEFAULT_JPEG_QUALITY, ExportFormat, encode_effect_composite, save_effect_composite,
+    DEFAULT_JPEG_QUALITY, ExportFormat, encode_annotation_export, encode_effect_composite,
+    save_annotation_export, save_effect_composite,
 };
 pub use hotkey::{HotkeyAction, HotkeyBinding, HotkeyKey, HotkeyModifiers, HotkeyValidationError};
 pub use model::{CaptureFrame, CaptureMode, CaptureOptions, SavedCapture};
