@@ -1,3 +1,9 @@
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+};
+
 use gpui::{
     App, Bounds, Context, CursorStyle, Entity, Focusable, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels, Point, Render, Window, WindowBounds,
@@ -5,7 +11,7 @@ use gpui::{
 };
 use sidekick_core::{
     Annotation, AnnotationStyle, EditorDocument, EffectBrushStyle, MarkerStyle, Point as CorePoint,
-    TextStyle,
+    TextStyle, save_annotation_preview,
 };
 
 use crate::{
@@ -19,6 +25,8 @@ const WINDOW_HEIGHT: f32 = 760.0;
 const TOOLBAR_HEIGHT: f32 = 48.0;
 const CANVAS_WIDTH: f32 = WINDOW_WIDTH;
 const CANVAS_HEIGHT: f32 = WINDOW_HEIGHT - TOOLBAR_HEIGHT;
+
+static NEXT_PREVIEW_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnnotationTool {
@@ -53,6 +61,11 @@ pub struct AnnotationCanvasView {
     effect_brush_draft: Option<EffectBrushDraft>,
     text_draft: Option<TextAnnotationDraft>,
     text_input: Option<Entity<TextDraftInput>>,
+    preview_id: u64,
+    preview_generation: u64,
+    preview_rendering_generation: Option<u64>,
+    preview_path: Option<PathBuf>,
+    preview_dirty: bool,
 }
 
 impl AnnotationCanvasView {
@@ -66,6 +79,11 @@ impl AnnotationCanvasView {
             effect_brush_draft: None,
             text_draft: None,
             text_input: None,
+            preview_id: NEXT_PREVIEW_ID.fetch_add(1, Ordering::Relaxed),
+            preview_generation: 0,
+            preview_rendering_generation: None,
+            preview_path: None,
+            preview_dirty: true,
         }
     }
 
@@ -75,6 +93,80 @@ impl AnnotationCanvasView {
 
     pub fn active_tool(&self) -> AnnotationTool {
         self.active_tool
+    }
+
+    fn has_committed_effects(&self) -> bool {
+        self.document.annotations().iter().any(|annotation| {
+            matches!(
+                annotation,
+                Annotation::BlurBrush { .. } | Annotation::PixelateBrush { .. }
+            )
+        })
+    }
+
+    fn add_annotation(&mut self, annotation: Annotation) -> usize {
+        let index = self.document.add_annotation(annotation);
+        self.preview_generation = self.preview_generation.saturating_add(1);
+        self.preview_dirty = true;
+        index
+    }
+
+    fn ensure_committed_preview(&mut self, cx: &mut Context<Self>) {
+        if !self.has_committed_effects() || !self.preview_dirty {
+            return;
+        }
+
+        if self.preview_rendering_generation.is_some() {
+            return;
+        }
+
+        let generation = self.preview_generation;
+        let path = std::env::temp_dir().join(format!(
+            "screen-sidekick-preview-{}-{}-{}.png",
+            std::process::id(),
+            self.preview_id,
+            generation
+        ));
+        let base_path = self.document.base().path().to_path_buf();
+        let annotations = self.document.annotations().to_vec();
+        self.preview_rendering_generation = Some(generation);
+
+        let render_task = cx.background_executor().spawn(async move {
+            let succeeded = save_annotation_preview(&base_path, &annotations, &path).is_ok();
+            if !succeeded {
+                let _ = fs::remove_file(&path);
+            }
+            (path, succeeded)
+        });
+
+        cx.spawn(async move |view, cx| {
+            let (path, succeeded) = render_task.await;
+            let update_result = view.update(cx, |view, cx| {
+                if view.preview_rendering_generation == Some(generation) {
+                    view.preview_rendering_generation = None;
+                }
+
+                if !succeeded || view.preview_generation != generation {
+                    let _ = fs::remove_file(&path);
+                    view.preview_dirty = true;
+                    cx.notify();
+                    return;
+                }
+
+                if let Some(previous) = view.preview_path.replace(path.clone())
+                    && previous != path
+                {
+                    let _ = fs::remove_file(previous);
+                }
+                view.preview_dirty = false;
+                cx.notify();
+            });
+
+            if update_result.is_err() {
+                let _ = fs::remove_file(path);
+            }
+        })
+        .detach();
     }
 
     fn set_tool(&mut self, tool: AnnotationTool, cx: &mut Context<Self>) {
@@ -170,7 +262,7 @@ impl AnnotationCanvasView {
 
     fn add_number_marker(&mut self, position: CorePoint) {
         let number = next_marker_number(self.document.annotations());
-        self.document.add_annotation(Annotation::NumberMarker {
+        self.add_annotation(Annotation::NumberMarker {
             x: position.x,
             y: position.y,
             number,
@@ -201,7 +293,7 @@ impl AnnotationCanvasView {
             draft.push_point(position);
         }
         if let Some(annotation) = draft.commit() {
-            self.document.add_annotation(annotation);
+            self.add_annotation(annotation);
         }
     }
 
@@ -241,7 +333,7 @@ impl AnnotationCanvasView {
             return true;
         };
         if let Some(annotation) = draft.commit(text) {
-            self.document.add_annotation(annotation);
+            self.add_annotation(annotation);
         }
         input.update(cx, |input, cx| input.reset(cx));
         true
@@ -307,7 +399,7 @@ impl AnnotationCanvasView {
         };
 
         if let Some(annotation) = annotation {
-            self.document.add_annotation(annotation);
+            self.add_annotation(annotation);
         }
     }
 
@@ -318,10 +410,18 @@ impl AnnotationCanvasView {
         }
 
         let points = std::mem::take(&mut self.freehand_points);
-        self.document.add_annotation(Annotation::Freehand {
+        self.add_annotation(Annotation::Freehand {
             points,
             style: Self::outline_style(),
         });
+    }
+}
+
+impl Drop for AnnotationCanvasView {
+    fn drop(&mut self) {
+        if let Some(path) = self.preview_path.take() {
+            let _ = fs::remove_file(path);
+        }
     }
 }
 
@@ -333,13 +433,21 @@ impl Render for AnnotationCanvasView {
 
         let geometry = self.image_geometry();
         let preview = self.drag_bounds(geometry);
-        let annotation_layers = self
-            .document
-            .annotations()
-            .iter()
-            .cloned()
-            .filter_map(|annotation| render_annotation_layer(annotation, geometry));
-        let base_path = self.document.base().path().to_path_buf();
+        self.ensure_committed_preview(cx);
+        let derived_preview_path = self.preview_path.clone();
+        let use_derived_preview = derived_preview_path.is_some();
+        let annotation_layers = if use_derived_preview {
+            Vec::new()
+        } else {
+            self.document
+                .annotations()
+                .iter()
+                .cloned()
+                .filter_map(|annotation| render_annotation_layer(annotation, geometry))
+                .collect::<Vec<_>>()
+        };
+        let base_path =
+            derived_preview_path.unwrap_or_else(|| self.document.base().path().to_path_buf());
         let active_tool = self.active_tool;
         let drag_start = self.drag_start;
         let drag_current = self.drag_current;
