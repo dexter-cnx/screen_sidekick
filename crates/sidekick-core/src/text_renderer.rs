@@ -4,7 +4,6 @@ use image::{Rgba, RgbaImage};
 use crate::{Annotation, TextStyle, annotation_renderer::render_annotations};
 
 const TEXT_BACKGROUND_PADDING_X: f32 = 4.0;
-const TEXT_BACKGROUND_PADDING_Y: f32 = 2.0;
 const LINE_HEIGHT_SCALE: f32 = 1.25;
 
 pub fn render_annotations_with_text(base: &RgbaImage, annotations: &[Annotation]) -> RgbaImage {
@@ -76,14 +75,15 @@ fn render_text_annotation(
         )
     });
 
+    let has_background = style.background.is_some();
     if let Some(background) = style.background.as_deref() {
         let background = parse_color(background);
         fill_rect(
             image,
-            x - TEXT_BACKGROUND_PADDING_X,
-            y - TEXT_BACKGROUND_PADDING_Y,
-            x + text_width + TEXT_BACKGROUND_PADDING_X,
-            y + text_height + TEXT_BACKGROUND_PADDING_Y,
+            x,
+            y,
+            x + text_width + TEXT_BACKGROUND_PADDING_X * 2.0,
+            y + text_height,
             background,
         );
     }
@@ -91,7 +91,7 @@ fn render_text_annotation(
     let foreground = parse_color(&style.color);
     let style_alpha = foreground[3];
     let draw_color = Color::rgb(foreground[0], foreground[1], foreground[2]);
-    let origin_x = x.round() as i32;
+    let origin_x = (x + if has_background { TEXT_BACKGROUND_PADDING_X } else { 0.0 }).round() as i32;
     let origin_y = y.round() as i32;
 
     buffer.draw(
@@ -237,6 +237,26 @@ mod tests {
 
         let rendered = render_annotations_with_text(&base, &[text]);
         assert!(rendered.pixels().any(|pixel| pixel[3] > 0));
+    }
+
+    #[test]
+    fn text_background_uses_editor_origin_and_horizontal_padding() {
+        let base = RgbaImage::from_pixel(120, 60, Rgba([0, 0, 0, 0]));
+        let text = Annotation::Text {
+            x: 10.0,
+            y: 10.0,
+            text: "A".to_owned(),
+            style: TextStyle {
+                color: "#ffffffff".to_owned(),
+                font_size: 20.0,
+                background: Some("#ff000080".to_owned()),
+            },
+        };
+
+        let rendered = render_annotations_with_text(&base, &[text]);
+        assert_eq!(rendered.get_pixel(9, 10)[3], 0);
+        assert_eq!(rendered.get_pixel(10, 9)[3], 0);
+        assert!(rendered.get_pixel(10, 10)[3] > 0);
     }
 
     #[test]
