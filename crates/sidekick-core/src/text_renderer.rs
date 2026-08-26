@@ -91,7 +91,12 @@ fn render_text_annotation(
     let foreground = parse_color(&style.color);
     let style_alpha = foreground[3];
     let draw_color = Color::rgb(foreground[0], foreground[1], foreground[2]);
-    let origin_x = (x + if has_background { TEXT_BACKGROUND_PADDING_X } else { 0.0 }).round() as i32;
+    let origin_x = (x + if has_background {
+        TEXT_BACKGROUND_PADDING_X
+    } else {
+        0.0
+    })
+    .round() as i32;
     let origin_y = y.round() as i32;
 
     buffer.draw(
