@@ -66,7 +66,10 @@ mod tests {
         let settings = ExportSettings::default();
         assert_eq!(settings.kind(), ExportKind::Jpeg);
         assert_eq!(settings.jpeg_quality(), DEFAULT_JPEG_QUALITY);
-        assert_eq!(settings.export_format(), ExportFormat::jpeg(DEFAULT_JPEG_QUALITY));
+        assert_eq!(
+            settings.export_format(),
+            ExportFormat::jpeg(DEFAULT_JPEG_QUALITY)
+        );
         assert_eq!(settings.extension(), "jpg");
     }
 
