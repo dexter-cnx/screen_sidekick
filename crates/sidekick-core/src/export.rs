@@ -99,7 +99,10 @@ fn encode_rgba(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, sync::atomic::{AtomicU64, Ordering}};
+    use std::{
+        fs,
+        sync::atomic::{AtomicU64, Ordering},
+    };
 
     use image::Rgba;
 
