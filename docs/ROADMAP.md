@@ -58,8 +58,8 @@ Windows 10/11 is a planned follow-up platform. During the macOS-first phase, Win
 - [x] undo/redo/delete foundation
 
 ## M4 — Advanced annotation + export
-- [ ] blur/pixelate brush
-- [ ] highlight dimmer
+- [x] blur/pixelate brush
+- [x] highlight dimmer
 - [ ] PNG/JPEG export
 - [ ] JPEG quality slider
 - [ ] clipboard render
