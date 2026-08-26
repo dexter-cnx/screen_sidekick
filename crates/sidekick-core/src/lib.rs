@@ -7,6 +7,7 @@ pub mod hotkey;
 pub mod model;
 pub mod preview;
 pub mod sidecar;
+pub mod text_renderer;
 
 pub use annotation_renderer::render_annotations;
 pub use capture::{CaptureRegion, CaptureWindow, Capturer, WindowShadowPolicy, XcapCapturer};
@@ -22,3 +23,4 @@ pub use sidecar::{
     Annotation, AnnotationStyle, EffectBrushStyle, MarkerStyle, Point, SIDECAR_VERSION,
     SidecarDocument, TextStyle,
 };
+pub use text_renderer::render_annotations_with_text;

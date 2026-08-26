@@ -6,7 +6,7 @@ use std::{
 
 use image::{ImageEncoder, RgbaImage, codecs::jpeg::JpegEncoder, codecs::png::PngEncoder};
 
-use crate::{Annotation, render_annotations};
+use crate::{Annotation, render_annotations_with_text};
 
 pub const DEFAULT_JPEG_QUALITY: u8 = 90;
 
@@ -37,7 +37,7 @@ pub fn encode_effect_composite(
     annotations: &[Annotation],
     format: ExportFormat,
 ) -> Result<Vec<u8>, image::ImageError> {
-    let rendered = render_annotations(base, annotations);
+    let rendered = render_annotations_with_text(base, annotations);
     let mut bytes = Vec::new();
     encode_rgba(&rendered, format, &mut bytes)?;
     Ok(bytes)
@@ -49,7 +49,7 @@ pub fn save_effect_composite(
     format: ExportFormat,
     path: impl AsRef<Path>,
 ) -> Result<(), image::ImageError> {
-    let rendered = render_annotations(base, annotations);
+    let rendered = render_annotations_with_text(base, annotations);
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
     encode_rgba(&rendered, format, &mut writer)?;
@@ -83,11 +83,16 @@ mod tests {
     use image::Rgba;
 
     use super::*;
-    use crate::{AnnotationStyle, EffectBrushStyle, Point};
+    use crate::{AnnotationStyle, EffectBrushStyle, Point, TextStyle};
 
     fn sample_image() -> RgbaImage {
-        RgbaImage::from_fn(8, 8, |x, y| {
-            Rgba([(x * 28) as u8, (y * 28) as u8, ((x + y) * 14) as u8, 255])
+        RgbaImage::from_fn(96, 48, |x, y| {
+            Rgba([
+                (x.saturating_mul(2)) as u8,
+                (y.saturating_mul(4)) as u8,
+                ((x + y).saturating_mul(2)) as u8,
+                255,
+            ])
         })
     }
 
@@ -114,8 +119,8 @@ mod tests {
     fn export_applies_effect_compositor_before_encoding() {
         let base = sample_image();
         let annotations = [Annotation::PixelateBrush {
-            points: vec![Point { x: 4.0, y: 4.0 }],
-            style: EffectBrushStyle::new(3.0, 1.0),
+            points: vec![Point { x: 40.0, y: 24.0 }],
+            style: EffectBrushStyle::new(8.0, 1.0),
         }];
 
         let plain = encode_effect_composite(&base, &[], ExportFormat::Png).unwrap();
@@ -127,12 +132,31 @@ mod tests {
     fn export_includes_shape_annotations() {
         let base = sample_image();
         let annotations = [Annotation::Line {
-            start: Point { x: 1.0, y: 1.0 },
-            end: Point { x: 6.0, y: 6.0 },
+            start: Point { x: 4.0, y: 4.0 },
+            end: Point { x: 80.0, y: 40.0 },
             style: AnnotationStyle {
                 stroke: "#ff0000".to_owned(),
                 stroke_width: 2.0,
                 fill: None,
+            },
+        }];
+
+        let plain = encode_effect_composite(&base, &[], ExportFormat::Png).unwrap();
+        let annotated = encode_effect_composite(&base, &annotations, ExportFormat::Png).unwrap();
+        assert_ne!(plain, annotated);
+    }
+
+    #[test]
+    fn export_includes_text_annotations() {
+        let base = sample_image();
+        let annotations = [Annotation::Text {
+            x: 6.0,
+            y: 6.0,
+            text: "ไทย".to_owned(),
+            style: TextStyle {
+                color: "#ffffffff".to_owned(),
+                font_size: 20.0,
+                background: Some("#00000080".to_owned()),
             },
         }];
 
