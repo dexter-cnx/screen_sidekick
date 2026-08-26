@@ -132,10 +132,17 @@ fn draw_highlight_dimmer(
         return;
     }
 
-    fill_rect(image, 0.0, 0.0, image_width, top, color);
-    fill_rect(image, 0.0, bottom, image_width, image_height, color);
-    fill_rect(image, 0.0, top, left, bottom, color);
-    fill_rect(image, right, top, image_width, bottom, color);
+    for py in 0..image.height() {
+        let sample_y = py as f32 + 0.5;
+        for px in 0..image.width() {
+            let sample_x = px as f32 + 0.5;
+            let inside_highlight =
+                sample_x >= left && sample_x < right && sample_y >= top && sample_y < bottom;
+            if !inside_highlight {
+                blend_pixel(image, px, py, color);
+            }
+        }
+    }
 }
 
 fn draw_ellipse(image: &mut RgbaImage, x: f32, y: f32, w: f32, h: f32, style: &AnnotationStyle) {
@@ -481,6 +488,26 @@ mod tests {
 
         assert_eq!(rendered.get_pixel(1, 1), base.get_pixel(1, 1));
         assert_eq!(rendered.get_pixel(0, 0), &Rgba([191, 191, 191, 255]));
+    }
+
+    #[test]
+    fn fractional_highlight_edges_dim_each_outside_pixel_once() {
+        let base = RgbaImage::from_pixel(4, 4, Rgba([255, 255, 255, 255]));
+        let dimmer = Annotation::HighlightDimmer {
+            x: 1.25,
+            y: 1.25,
+            w: 1.5,
+            h: 1.5,
+            style: DimmerStyle::new("#000000", 0.5),
+        };
+
+        let rendered = render_annotations(&base, &[dimmer]);
+
+        assert_eq!(rendered.get_pixel(1, 1), base.get_pixel(1, 1));
+        assert_eq!(rendered.get_pixel(2, 2), base.get_pixel(2, 2));
+        assert_eq!(rendered.get_pixel(0, 1), &Rgba([127, 127, 127, 255]));
+        assert_eq!(rendered.get_pixel(1, 0), &Rgba([127, 127, 127, 255]));
+        assert_eq!(rendered.get_pixel(0, 0), &Rgba([127, 127, 127, 255]));
     }
 
     #[test]
