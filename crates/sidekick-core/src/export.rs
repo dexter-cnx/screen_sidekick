@@ -6,7 +6,7 @@ use std::{
 
 use image::{ImageEncoder, RgbaImage, codecs::jpeg::JpegEncoder, codecs::png::PngEncoder};
 
-use crate::{Annotation, composite_effect_brushes};
+use crate::{Annotation, render_annotations};
 
 pub const DEFAULT_JPEG_QUALITY: u8 = 90;
 
@@ -37,7 +37,7 @@ pub fn encode_effect_composite(
     annotations: &[Annotation],
     format: ExportFormat,
 ) -> Result<Vec<u8>, image::ImageError> {
-    let rendered = composite_effect_brushes(base, annotations);
+    let rendered = render_annotations(base, annotations);
     let mut bytes = Vec::new();
     encode_rgba(&rendered, format, &mut bytes)?;
     Ok(bytes)
@@ -49,7 +49,7 @@ pub fn save_effect_composite(
     format: ExportFormat,
     path: impl AsRef<Path>,
 ) -> Result<(), image::ImageError> {
-    let rendered = composite_effect_brushes(base, annotations);
+    let rendered = render_annotations(base, annotations);
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
     encode_rgba(&rendered, format, &mut writer)?;
@@ -83,7 +83,7 @@ mod tests {
     use image::Rgba;
 
     use super::*;
-    use crate::{EffectBrushStyle, Point};
+    use crate::{AnnotationStyle, EffectBrushStyle, Point};
 
     fn sample_image() -> RgbaImage {
         RgbaImage::from_fn(8, 8, |x, y| {
@@ -121,5 +121,23 @@ mod tests {
         let plain = encode_effect_composite(&base, &[], ExportFormat::Png).unwrap();
         let effected = encode_effect_composite(&base, &annotations, ExportFormat::Png).unwrap();
         assert_ne!(plain, effected);
+    }
+
+    #[test]
+    fn export_includes_shape_annotations() {
+        let base = sample_image();
+        let annotations = [Annotation::Line {
+            start: Point { x: 1.0, y: 1.0 },
+            end: Point { x: 6.0, y: 6.0 },
+            style: AnnotationStyle {
+                stroke: "#ff0000".to_owned(),
+                stroke_width: 2.0,
+                fill: None,
+            },
+        }];
+
+        let plain = encode_effect_composite(&base, &[], ExportFormat::Png).unwrap();
+        let annotated = encode_effect_composite(&base, &annotations, ExportFormat::Png).unwrap();
+        assert_ne!(plain, annotated);
     }
 }
