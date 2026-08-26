@@ -4,5 +4,12 @@ set -eu
 echo "==> cargo fmt --all"
 cargo fmt --all
 
+if ! git diff --quiet --; then
+  echo ""
+  echo "cargo fmt changed tracked files. Commit the formatting changes before pushing."
+  git --no-pager diff --stat
+  exit 1
+fi
+
 echo "==> cargo fmt --all -- --check"
 cargo fmt --all -- --check
