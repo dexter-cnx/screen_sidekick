@@ -1,3 +1,9 @@
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+};
+
 use gpui::{
     App, Bounds, Context, CursorStyle, Entity, Focusable, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels, Point, Render, Window, WindowBounds,
@@ -5,7 +11,7 @@ use gpui::{
 };
 use sidekick_core::{
     Annotation, AnnotationStyle, EditorDocument, EffectBrushStyle, MarkerStyle, Point as CorePoint,
-    TextStyle,
+    TextStyle, save_annotation_preview,
 };
 
 use crate::{
@@ -19,6 +25,8 @@ const WINDOW_HEIGHT: f32 = 760.0;
 const TOOLBAR_HEIGHT: f32 = 48.0;
 const CANVAS_WIDTH: f32 = WINDOW_WIDTH;
 const CANVAS_HEIGHT: f32 = WINDOW_HEIGHT - TOOLBAR_HEIGHT;
+
+static NEXT_PREVIEW_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnnotationTool {
@@ -53,6 +61,10 @@ pub struct AnnotationCanvasView {
     effect_brush_draft: Option<EffectBrushDraft>,
     text_draft: Option<TextAnnotationDraft>,
     text_input: Option<Entity<TextDraftInput>>,
+    preview_id: u64,
+    preview_generation: u64,
+    preview_path: Option<PathBuf>,
+    preview_dirty: bool,
 }
 
 impl AnnotationCanvasView {
@@ -66,6 +78,10 @@ impl AnnotationCanvasView {
             effect_brush_draft: None,
             text_draft: None,
             text_input: None,
+            preview_id: NEXT_PREVIEW_ID.fetch_add(1, Ordering::Relaxed),
+            preview_generation: 0,
+            preview_path: None,
+            preview_dirty: true,
         }
     }
 
@@ -75,6 +91,61 @@ impl AnnotationCanvasView {
 
     pub fn active_tool(&self) -> AnnotationTool {
         self.active_tool
+    }
+
+    fn has_committed_effects(&self) -> bool {
+        self.document.annotations().iter().any(|annotation| {
+            matches!(
+                annotation,
+                Annotation::BlurBrush { .. } | Annotation::PixelateBrush { .. }
+            )
+        })
+    }
+
+    fn add_annotation(&mut self, annotation: Annotation) -> usize {
+        let index = self.document.add_annotation(annotation);
+        self.preview_dirty = true;
+        index
+    }
+
+    fn committed_preview_path(&mut self) -> Option<PathBuf> {
+        if !self.has_committed_effects() {
+            return None;
+        }
+
+        if !self.preview_dirty
+            && let Some(path) = self.preview_path.as_ref()
+            && path.exists()
+        {
+            return Some(path.clone());
+        }
+
+        self.preview_generation = self.preview_generation.saturating_add(1);
+        let path = std::env::temp_dir().join(format!(
+            "screen-sidekick-preview-{}-{}-{}.png",
+            std::process::id(),
+            self.preview_id,
+            self.preview_generation
+        ));
+
+        if save_annotation_preview(
+            self.document.base().path(),
+            self.document.annotations(),
+            &path,
+        )
+        .is_err()
+        {
+            let _ = fs::remove_file(&path);
+            return None;
+        }
+
+        if let Some(previous) = self.preview_path.replace(path.clone())
+            && previous != path
+        {
+            let _ = fs::remove_file(previous);
+        }
+        self.preview_dirty = false;
+        Some(path)
     }
 
     fn set_tool(&mut self, tool: AnnotationTool, cx: &mut Context<Self>) {
@@ -170,7 +241,7 @@ impl AnnotationCanvasView {
 
     fn add_number_marker(&mut self, position: CorePoint) {
         let number = next_marker_number(self.document.annotations());
-        self.document.add_annotation(Annotation::NumberMarker {
+        self.add_annotation(Annotation::NumberMarker {
             x: position.x,
             y: position.y,
             number,
@@ -201,7 +272,7 @@ impl AnnotationCanvasView {
             draft.push_point(position);
         }
         if let Some(annotation) = draft.commit() {
-            self.document.add_annotation(annotation);
+            self.add_annotation(annotation);
         }
     }
 
@@ -241,7 +312,7 @@ impl AnnotationCanvasView {
             return true;
         };
         if let Some(annotation) = draft.commit(text) {
-            self.document.add_annotation(annotation);
+            self.add_annotation(annotation);
         }
         input.update(cx, |input, cx| input.reset(cx));
         true
@@ -307,7 +378,7 @@ impl AnnotationCanvasView {
         };
 
         if let Some(annotation) = annotation {
-            self.document.add_annotation(annotation);
+            self.add_annotation(annotation);
         }
     }
 
@@ -318,10 +389,18 @@ impl AnnotationCanvasView {
         }
 
         let points = std::mem::take(&mut self.freehand_points);
-        self.document.add_annotation(Annotation::Freehand {
+        self.add_annotation(Annotation::Freehand {
             points,
             style: Self::outline_style(),
         });
+    }
+}
+
+impl Drop for AnnotationCanvasView {
+    fn drop(&mut self) {
+        if let Some(path) = self.preview_path.take() {
+            let _ = fs::remove_file(path);
+        }
     }
 }
 
@@ -333,13 +412,20 @@ impl Render for AnnotationCanvasView {
 
         let geometry = self.image_geometry();
         let preview = self.drag_bounds(geometry);
-        let annotation_layers = self
-            .document
-            .annotations()
-            .iter()
-            .cloned()
-            .filter_map(|annotation| render_annotation_layer(annotation, geometry));
-        let base_path = self.document.base().path().to_path_buf();
+        let derived_preview_path = self.committed_preview_path();
+        let use_derived_preview = derived_preview_path.is_some();
+        let annotation_layers = if use_derived_preview {
+            Vec::new()
+        } else {
+            self.document
+                .annotations()
+                .iter()
+                .cloned()
+                .filter_map(|annotation| render_annotation_layer(annotation, geometry))
+                .collect::<Vec<_>>()
+        };
+        let base_path = derived_preview_path
+            .unwrap_or_else(|| self.document.base().path().to_path_buf());
         let active_tool = self.active_tool;
         let drag_start = self.drag_start;
         let drag_current = self.drag_current;
