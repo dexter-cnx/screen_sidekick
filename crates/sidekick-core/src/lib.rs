@@ -6,6 +6,7 @@ pub mod export;
 pub mod hotkey;
 pub mod model;
 pub mod preview;
+pub mod preview_render;
 pub mod sidecar;
 pub mod text_renderer;
 
@@ -19,6 +20,7 @@ pub use export::{
 pub use hotkey::{HotkeyAction, HotkeyBinding, HotkeyKey, HotkeyModifiers, HotkeyValidationError};
 pub use model::{CaptureFrame, CaptureMode, CaptureOptions, SavedCapture};
 pub use preview::{DEFAULT_PREVIEW_LIMIT, PreviewStack, PreviewVisibility, PreviewVisibilityState};
+pub use preview_render::save_annotation_preview;
 pub use sidecar::{
     Annotation, AnnotationStyle, EffectBrushStyle, MarkerStyle, Point, SIDECAR_VERSION,
     SidecarDocument, TextStyle,
