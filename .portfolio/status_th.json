@@ -2,19 +2,20 @@
   "schemaVersion": 1,
   "project": {
     "title": "Screen Sidekick",
-    "tagline": "เครื่องมือ screenshot ด้วย Rust + GPUI สำหรับ capture, preview และ annotation ในอนาคต",
+    "tagline": "เครื่องมือ screenshot ด้วย Rust + GPUI สำหรับ capture, preview, annotation และ export",
     "status": "active",
     "version": null
   },
   "summary": {
-    "short": "Screen Sidekick เป็นเครื่องมือ screenshot แบบ macOS-first ที่ใช้ Rust + GPUI และแยก core ให้รองรับ capture, history, annotation และ Windows ในอนาคตได้โดยไม่ต้องรื้อ domain logic",
-    "long": "Milestone M0 ปัจจุบันมี workspace 3 crates, fullscreen capture ผ่าน xcap, เก็บ RGBA ที่ความละเอียดเดิม, quick-save PNG, transparent GPUI floating preview, sidecar v1 foundation และแยก platform dependency ไว้ชัดเจน"
+    "short": "Screen Sidekick เป็นเครื่องมือ screenshot แบบ macOS-first ที่ใช้ Rust + GPUI และแยก core ให้รองรับ capture, preview stack, annotation และ Windows ในอนาคตได้โดยไม่ต้องรื้อ domain logic",
+    "long": "Milestone M0-M3 เสร็จแล้ว ครอบคลุม capture-to-overlay, tray และ hotkeys, capture modes, native macOS window behavior และ annotation foundation ส่วน M4 advanced annotation กำลังดำเนินการ โดย blur/pixelate และ highlight dimmer เสร็จแล้ว เหลือ PNG/JPEG export, JPEG quality controls, clipboard render และ Quick Save"
   },
   "highlights": [
     "Rust core ไม่ผูกกับ GPUI",
-    "Fullscreen capture และ quick-save PNG",
-    "Transparent GPUI floating preview",
-    "โฟกัส macOS ก่อน และวางแผน Windows ภายหลัง"
+    "รองรับ fullscreen, focused-window, chooser และ interactive area capture",
+    "มี tray, configurable global hotkeys, preview stack และ clipboard/delete actions",
+    "มี annotation foundation พร้อม blur/pixelate และ highlight dimmer",
+    "โฟกัส macOS ก่อน และวางแผน Windows หลัง product stabilization"
   ],
   "tech": ["Rust", "GPUI", "xcap", "macOS"],
   "links": {
