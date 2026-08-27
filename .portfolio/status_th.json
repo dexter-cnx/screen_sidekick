@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "title": "Screen Sidekick",
+    "tagline": "เครื่องมือ screenshot ด้วย Rust + GPUI สำหรับ capture, preview และ annotation ในอนาคต",
+    "status": "active",
+    "version": null
+  },
+  "summary": {
+    "short": "Screen Sidekick เป็นเครื่องมือ screenshot แบบ macOS-first ที่ใช้ Rust + GPUI และแยก core ให้รองรับ capture, history, annotation และ Windows ในอนาคตได้โดยไม่ต้องรื้อ domain logic",
+    "long": "Milestone M0 ปัจจุบันมี workspace 3 crates, fullscreen capture ผ่าน xcap, เก็บ RGBA ที่ความละเอียดเดิม, quick-save PNG, transparent GPUI floating preview, sidecar v1 foundation และแยก platform dependency ไว้ชัดเจน"
+  },
+  "highlights": [
+    "Rust core ไม่ผูกกับ GPUI",
+    "Fullscreen capture และ quick-save PNG",
+    "Transparent GPUI floating preview",
+    "โฟกัส macOS ก่อน และวางแผน Windows ภายหลัง"
+  ],
+  "tech": ["Rust", "GPUI", "xcap", "macOS"],
+  "links": {
+    "repository": "https://github.com/dexter-cnx/screen_sidekick",
+    "homepage": null,
+    "package": null,
+    "docs": null,
+    "demo": null
+  },
+  "updatedAt": "2026-08-27T00:00:00Z"
+}
