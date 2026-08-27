@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "title": "Screen Sidekick",
+    "tagline": "A Rust + GPUI screenshot utility for capture, preview, annotation, and export workflows.",
+    "status": "active",
+    "version": null
+  },
+  "summary": {
+    "short": "Screen Sidekick is a macOS-first Rust + GPUI screenshot utility with portable core boundaries for capture, preview stacks, annotation, and future Windows support.",
+    "long": "Milestones M0-M3 are complete, covering capture-to-overlay, tray and hotkeys, capture modes, native macOS window behavior, and the annotation foundation. M4 advanced annotation is in progress with blur/pixelate and highlight dimmer complete; PNG/JPEG export, JPEG quality controls, clipboard render, and Quick Save remain to be completed."
+  },
+  "highlights": [
+    "Rust core independent from GPUI",
+    "Fullscreen, focused-window, chooser, and interactive area capture",
+    "Tray, configurable global hotkeys, preview stack, and clipboard/delete actions",
+    "Annotation foundation plus blur/pixelate and highlight dimmer",
+    "macOS-first with Windows planned after product stabilization"
+  ],
+  "tech": ["Rust", "GPUI", "xcap", "macOS"],
+  "links": {
+    "repository": "https://github.com/dexter-cnx/screen_sidekick",
+    "homepage": null,
+    "package": null,
+    "docs": null,
+    "demo": null
+  },
+  "updatedAt": "2026-08-27T00:00:00Z"
+}
