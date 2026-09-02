@@ -1,6 +1,7 @@
 pub mod annotation_canvas;
 pub mod area_selector;
 pub mod effect_brush;
+pub mod export_action;
 pub mod export_settings;
 pub mod highlight_dimmer;
 pub mod native_window;
@@ -15,6 +16,7 @@ pub use area_selector::{AreaSelectorView, area_selector_window_options};
 pub use effect_brush::{
     DEFAULT_EFFECT_BRUSH_RADIUS, DEFAULT_EFFECT_BRUSH_STRENGTH, EffectBrushDraft, EffectBrushKind,
 };
+pub use export_action::{ExportRequest, suggested_export_filename};
 pub use export_settings::{ExportKind, ExportSettings};
 pub use highlight_dimmer::{
     DEFAULT_DIMMER_COLOR, DEFAULT_DIMMER_OPACITY, HighlightDimmerDraft, MIN_HIGHLIGHT_SIZE,
