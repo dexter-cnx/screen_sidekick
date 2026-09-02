@@ -1,4 +1,7 @@
-use std::{path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use sidekick_core::{Annotation, save_annotation_export};
 
@@ -26,17 +29,14 @@ impl ExportRequest {
         self.settings
     }
 
-    pub fn save(
-        &self,
-        base_path: impl AsRef<Path>,
-        annotations: &[Annotation],
-    ) -> Result<(), image::ImageError> {
+    pub fn save(&self, base_path: impl AsRef<Path>, annotations: &[Annotation]) -> Result<(), String> {
         save_annotation_export(
             base_path,
             annotations,
             self.settings.export_format(),
             &self.output_path,
         )
+        .map_err(|error| error.to_string())
     }
 }
 
@@ -57,7 +57,7 @@ fn unix_timestamp_seconds() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use sidekick_core::{ExportFormat, DEFAULT_JPEG_QUALITY};
+    use sidekick_core::{DEFAULT_JPEG_QUALITY, ExportFormat};
 
     use super::*;
     use crate::export_settings::{ExportKind, ExportSettings};
@@ -83,9 +83,6 @@ mod tests {
         let request = ExportRequest::new("capture.jpg", settings);
 
         assert_eq!(request.output_path(), Path::new("capture.jpg"));
-        assert_eq!(
-            request.settings().export_format(),
-            ExportFormat::jpeg(82)
-        );
+        assert_eq!(request.settings().export_format(), ExportFormat::jpeg(82));
     }
 }
