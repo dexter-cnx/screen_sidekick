@@ -32,6 +32,25 @@ impl Default for ExportFormat {
     }
 }
 
+pub fn encode_annotation_export(
+    base_path: impl AsRef<Path>,
+    annotations: &[Annotation],
+    format: ExportFormat,
+) -> Result<Vec<u8>, image::ImageError> {
+    let base = image::open(base_path)?.to_rgba8();
+    encode_effect_composite(&base, annotations, format)
+}
+
+pub fn save_annotation_export(
+    base_path: impl AsRef<Path>,
+    annotations: &[Annotation],
+    format: ExportFormat,
+    output_path: impl AsRef<Path>,
+) -> Result<(), image::ImageError> {
+    let base = image::open(base_path)?.to_rgba8();
+    save_effect_composite(&base, annotations, format, output_path)
+}
+
 pub fn encode_effect_composite(
     base: &RgbaImage,
     annotations: &[Annotation],
@@ -80,10 +99,17 @@ fn encode_rgba(
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        fs,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
     use image::Rgba;
 
     use super::*;
     use crate::{AnnotationStyle, EffectBrushStyle, Point, TextStyle};
+
+    static NEXT_TEST_ID: AtomicU64 = AtomicU64::new(1);
 
     fn sample_image() -> RgbaImage {
         RgbaImage::from_fn(96, 48, |x, y| {
@@ -94,6 +120,15 @@ mod tests {
                 255,
             ])
         })
+    }
+
+    fn test_path(extension: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "screen-sidekick-export-test-{}-{}.{}",
+            std::process::id(),
+            NEXT_TEST_ID.fetch_add(1, Ordering::Relaxed),
+            extension
+        ))
     }
 
     #[test]
@@ -113,6 +148,35 @@ mod tests {
         let bytes = encode_effect_composite(&sample_image(), &[], ExportFormat::jpeg(75)).unwrap();
         assert_eq!(&bytes[..2], &[0xff, 0xd8]);
         assert_eq!(&bytes[bytes.len() - 2..], &[0xff, 0xd9]);
+    }
+
+    #[test]
+    fn path_based_export_loads_base_and_saves_rendered_output() {
+        let source_path = test_path("png");
+        let output_path = test_path("jpg");
+        sample_image().save(&source_path).unwrap();
+
+        save_annotation_export(&source_path, &[], ExportFormat::jpeg(80), &output_path).unwrap();
+
+        let bytes = fs::read(&output_path).unwrap();
+        assert_eq!(&bytes[..2], &[0xff, 0xd8]);
+        assert_eq!(&bytes[bytes.len() - 2..], &[0xff, 0xd9]);
+
+        let _ = fs::remove_file(source_path);
+        let _ = fs::remove_file(output_path);
+    }
+
+    #[test]
+    fn path_based_encode_matches_in_memory_export() {
+        let source_path = test_path("png");
+        let base = sample_image();
+        base.save(&source_path).unwrap();
+
+        let from_path = encode_annotation_export(&source_path, &[], ExportFormat::Png).unwrap();
+        let from_memory = encode_effect_composite(&base, &[], ExportFormat::Png).unwrap();
+        assert_eq!(from_path, from_memory);
+
+        let _ = fs::remove_file(source_path);
     }
 
     #[test]
